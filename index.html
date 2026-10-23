@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en" data-mode="signal" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Documentrism — log your work in seconds, add the detail later.">
+<title>Documentrism</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<!-- The user's own CSS is written into this element at runtime, as text.
+     It is never inserted as markup. See applyCustomCss() in app.js. -->
+<style id="customCss"></style>
+</head>
+<body>
+
+<div class="boot" id="boot">
+  <div class="in">
+    <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
+    <div class="bar"><i></i></div>
+    <div class="msg" id="bootMsg">Starting</div>
+  </div>
+</div>
+
+<!-- ======================================================================
+     GATE — backend URL, then sign up / sign in / reset
+     ====================================================================== -->
+<div class="gate hide" id="gate">
+
+  <!-- 1. backend URL ------------------------------------------------- -->
+  <div class="gate-card gate-step" id="stepUrl">
+    <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
+    <p class="lede">
+      First, connect this app to your sheet. Paste the Apps Script web app URL
+      you got when you deployed the backend.
+    </p>
+    <div class="field">
+      <label for="urlIn">Apps Script web app URL</label>
+      <input class="inp" id="urlIn" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="err" id="urlErr"></div>
+    <div class="note-box">
+      It must end in <b>/exec</b>, not <b>/dev</b>, and the deployment's
+      <b>Who has access</b> must be <b>Anyone</b> — otherwise the page cannot
+      reach it. The URL is stored on this device only.
+    </div>
+    <div class="gate-foot">
+      <div class="spacer"></div>
+      <button class="btn pri" id="urlSave">Connect</button>
+    </div>
+  </div>
+
+  <!-- 2. sign in ----------------------------------------------------- -->
+  <div class="gate-card gate-step" id="stepLogin">
+    <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
+    <p class="lede">Sign in to your work log.</p>
+    <div class="field" style="margin-bottom:14px">
+      <label for="liId">Username or name</label>
+      <input class="inp" id="liId" autocomplete="username" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="liPw">Password</label>
+      <input class="inp" id="liPw" type="password" autocomplete="current-password">
+    </div>
+    <div class="err" id="liErr"></div>
+    <div class="gate-foot">
+      <button class="linkish" data-step="stepSignup">Create an account</button>
+      <span class="faint">·</span>
+      <button class="linkish" data-step="stepReset">Forgot password</button>
+      <div class="spacer"></div>
+      <button class="btn pri" id="liGo">Sign in</button>
+    </div>
+    <div class="gate-foot" style="border:none;padding-top:4px;margin-top:4px">
+      <button class="linkish faint" id="changeUrl" style="font-size:10.5px">Change backend URL</button>
+    </div>
+  </div>
+
+  <!-- 3. sign up ----------------------------------------------------- -->
+  <div class="gate-card wide gate-step" id="stepSignup">
+    <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
+    <p class="lede">Create an account. Your notes are yours — nobody else signed in here sees them.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label for="suUser">Username</label>
+        <input class="inp" id="suUser" placeholder="dilpreet" autocomplete="username" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="suName">Your name</label>
+        <input class="inp" id="suName" placeholder="Dilpreet" autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="suPw">Password</label>
+        <input class="inp" id="suPw" type="password" autocomplete="new-password" placeholder="at least 8 characters">
+      </div>
+      <div class="field">
+        <label for="suPw2">Repeat password</label>
+        <input class="inp" id="suPw2" type="password" autocomplete="new-password">
+      </div>
+      <div class="field span">
+        <label for="suDob">Date of birth</label>
+        <input class="inp" id="suDob" type="date">
+      </div>
+    </div>
+    <div class="err" id="suErr"></div>
+    <div class="note-box warn">
+      Your date of birth is what gets you back in if you forget your password,
+      so give the real one. A birthday is easy for others to guess, so ask the
+      sheet's owner for a <b>reset code</b> instead whenever you can.
+    </div>
+    <div class="gate-foot">
+      <button class="linkish" data-step="stepLogin">I already have an account</button>
+      <div class="spacer"></div>
+      <button class="btn pri" id="suGo">Create account</button>
+    </div>
+  </div>
+
+  <!-- 4. reset ------------------------------------------------------- -->
+  <div class="gate-card wide gate-step" id="stepReset">
+    <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
+    <p class="lede">Set a new password using your date of birth, or a reset code from the sheet's owner.</p>
+    <div class="form-grid">
+      <div class="field span">
+        <label for="rsId">Username or name</label>
+        <input class="inp" id="rsId" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="rsDob">Date of birth</label>
+        <input class="inp" id="rsDob" type="date">
+      </div>
+      <div class="field">
+        <label for="rsCode">or reset code</label>
+        <input class="inp" id="rsCode" placeholder="8 characters" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="rsPw">New password</label>
+        <input class="inp" id="rsPw" type="password" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="rsPw2">Repeat new password</label>
+        <input class="inp" id="rsPw2" type="password" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="err" id="rsErr"></div>
+    <div class="ok-msg" id="rsOk"></div>
+    <div class="gate-foot">
+      <button class="linkish" data-step="stepLogin">Back to sign in</button>
+      <div class="spacer"></div>
+      <button class="btn pri" id="rsGo">Change password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================================
+     APP
+     ====================================================================== -->
+<div class="shell hide" id="shell">
+
+  <aside class="rail" id="rail">
+    <div class="rail-head">
+      <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
+      <div class="who">Signed in as <b id="whoName">—</b></div>
+    </div>
+
+    <div class="rail-body">
+      <div class="rail-group">
+        <button class="btn pri wide" id="qaOpen">+ Quick note</button>
+      </div>
+
+      <div class="rail-group">
+        <div class="eyebrow">Workspace</div>
+        <button class="nav-item on" data-nav="heads">
+          <span class="ic">▤</span><span class="lbl">Heads</span><span class="count num" id="cHeads">0</span>
+        </button>
+        <button class="nav-item" data-nav="inbox">
+          <span class="ic">◇</span><span class="lbl">Inbox</span><span class="count num" id="cInbox">0</span>
+        </button>
+      </div>
+
+      <div class="rail-group">
+        <div class="eyebrow">At a glance</div>
+        <div class="statline"><span class="k">Active</span><span class="v" id="sActive">0</span></div>
+        <div class="statline"><span class="k">Needs detail</span><span class="v" id="sNeeds">0</span></div>
+        <div class="statline"><span class="k">In inbox</span><span class="v" id="sInbox">0</span></div>
+      </div>
+
+      <div class="rail-group">
+        <div class="eyebrow">Shortcuts</div>
+        <div class="statline"><span class="k">Quick note</span><span class="k faint">Ctrl K</span></div>
+        <div class="statline"><span class="k">Search</span><span class="k faint">/</span></div>
+        <div class="statline"><span class="k">New head</span><span class="k faint">Ctrl J</span></div>
+        <div class="statline"><span class="k">Appearance</span><span class="k faint">Ctrl ,</span></div>
+      </div>
+    </div>
+
+    <div class="rail-foot">
+      <div class="row">
+        <button class="btn sm" id="btnExport">Export</button>
+        <button class="btn sm" id="btnRefresh">Refresh</button>
+      </div>
+      <div class="row">
+        <button class="btn sm ghost" id="btnSettings">Appearance</button>
+        <button class="btn sm ghost" id="btnSignOut">Sign out</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="work">
+    <div class="cmdbar">
+      <button class="btn sm ghost rail-toggle" id="railToggle">☰</button>
+      <div class="search">
+        <span class="ic">⌕</span>
+        <input class="inp" id="search" type="search" placeholder="Search your heads" autocomplete="off">
+        <kbd>/</kbd>
+      </div>
+      <div class="spacer"></div>
+      <div class="sync" id="sync" data-state="idle">
+        <span class="dot"></span><span id="syncText">Ready</span>
+        <button id="syncRetry" style="display:none">Retry</button>
+      </div>
+      <button class="btn sm" id="btnNewHead">+ New head</button>
+    </div>
+
+    <div class="surface" id="surface">
+      <div class="inner">
+
+        <!-- console: terminal mode only -->
+        <div class="console">
+          <div class="console-wrap">
+            <div class="console-out" id="consoleOut"></div>
+            <div class="console-in">
+              <span class="ps">documentrism $</span>
+              <input id="consoleIn" autocomplete="off" spellcheck="false" aria-label="Command line">
+              <span class="caret"></span>
+            </div>
+          </div>
+        </div>
+
+        <section class="view on" id="view-heads">
+          <div class="page-head">
+            <div>
+              <h1>Heads</h1>
+              <div class="page-sub" id="headsNote">Every piece of work, latest activity first.</div>
+            </div>
+          </div>
+
+          <div class="filters">
+            <div class="field">
+              <label for="fClient">Client</label>
+              <select class="sel" id="fClient"></select>
+            </div>
+            <div class="field">
+              <label for="fType">Type</label>
+              <select class="sel" id="fType"></select>
+            </div>
+            <div class="field">
+              <label for="fStatus">Status</label>
+              <select class="sel" id="fStatus"></select>
+            </div>
+            <div class="spacer"></div>
+            <label class="toggle"><input type="checkbox" id="fFlag"> Needs detail only</label>
+            <label class="toggle"><input type="checkbox" id="fArch"> Include archived</label>
+          </div>
+
+          <div class="panel">
+            <div class="thead">
+              <div>Head</div><div>Client</div><div class="c-type">Type</div>
+              <div>Status</div><div class="r c-notes">Notes</div><div class="r c-when">Last activity</div>
+            </div>
+            <div id="headsRows"><div class="skeleton"><i></i><i></i><i></i></div></div>
+          </div>
+        </section>
+
+        <section class="view" id="view-head">
+          <div class="crumb">
+            <button data-nav="heads">Heads</button><span>/</span><span id="crumbTitle" class="muted">—</span>
+          </div>
+
+          <div class="head-hero">
+            <input class="title-in" id="hTitle" placeholder="Untitled head">
+            <div class="meta" id="hMeta"></div>
+          </div>
+
+          <div class="split">
+            <div>
+              <div class="card">
+                <div class="card-head">
+                  <span class="eyebrow">Notes</span>
+                  <div class="spacer"></div>
+                  <span class="eyebrow" id="hNoteCount">0 entries</span>
+                </div>
+                <div class="composer">
+                  <div class="composer-row">
+                    <textarea class="ta" id="hNoteText" rows="2" placeholder="What did you just do? One line is enough."></textarea>
+                    <button class="btn pri" id="hNoteAdd">Add</button>
+                  </div>
+                  <div class="hint">Enter saves · Shift + Enter makes a new line</div>
+                </div>
+                <div class="timeline" id="hNotes"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <span class="eyebrow">Details</span>
+                  <div class="spacer"></div>
+                  <button class="btn sm ghost" id="hExpand" title="Insert starting headings for this type">Expand</button>
+                  <button class="btn sm" id="hDetailSave">Save details</button>
+                </div>
+                <div class="card-body">
+                  <textarea class="details-ta" id="hDetails" placeholder="The long write-up. Press Expand to drop in starting headings for this type."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="card">
+                <div class="card-head"><span class="eyebrow">Properties</span></div>
+                <div class="card-body props">
+                  <div class="field"><label for="hClient">Client</label><select class="sel" id="hClient"></select></div>
+                  <div class="field"><label for="hType">Type</label><select class="sel" id="hType"></select></div>
+                  <div class="field"><label for="hStatus">Status</label><select class="sel" id="hStatus"></select></div>
+                  <div class="field"><label for="hLink">Link</label><input class="inp" id="hLink" placeholder="https://"></div>
+                  <label class="toggle"><input type="checkbox" id="hFlag"> Needs detail</label>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head"><span class="eyebrow">Record</span></div>
+                <div class="card-body props">
+                  <div><div class="eyebrow">Created</div><div class="ro" id="hCreated">—</div></div>
+                  <div><div class="eyebrow">Last change</div><div class="ro" id="hUpdated">—</div></div>
+                  <div><div class="eyebrow">Head id</div><div class="ro faint" id="hId">—</div></div>
+                  <button class="btn sm danger wide" id="hArchive">Archive this head</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-inbox">
+          <div class="page-head">
+            <div>
+              <h1>Inbox</h1>
+              <div class="page-sub">Notes saved in a hurry, with no head yet. File them when you have a minute.</div>
+            </div>
+          </div>
+          <div class="panel" id="inboxPanel"><div class="skeleton"><i></i><i></i><i></i></div></div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- quick add --------------------------------------------------------- -->
+<div class="scrim" id="qaScrim">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="Quick note">
+    <div class="dialog-head">
+      <span class="eyebrow">Quick note</span><div class="spacer"></div>
+      <span class="eyebrow faint" id="qaClock">—</span>
+    </div>
+    <div class="dialog-body">
+      <textarea class="qa-ta" id="qaText" rows="3" placeholder="Type the note. Nothing else is required."></textarea>
+      <div class="qa-row">
+        <div class="field">
+          <label for="qaHead">Head (optional — blank goes to Inbox)</label>
+          <select class="sel" id="qaHead"></select>
+        </div>
+        <div class="field">
+          <label for="qaType">Type (optional)</label>
+          <select class="sel" id="qaType"></select>
+        </div>
+      </div>
+      <div class="err" id="qaErr"></div>
+    </div>
+    <div class="dialog-foot">
+      <span class="hint">Enter saves · Esc closes</span><div class="spacer"></div>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn pri" id="qaSave">Save note</button>
+    </div>
+  </div>
+</div>
+
+<!-- new head ---------------------------------------------------------- -->
+<div class="scrim" id="nhScrim">
+  <div class="dialog wide" role="dialog" aria-modal="true" aria-label="New head">
+    <div class="dialog-head"><span class="eyebrow">New head</span></div>
+    <div class="dialog-body">
+      <div class="form-grid">
+        <div class="field span"><label for="nhTitle">Title (required)</label>
+          <input class="inp" id="nhTitle" placeholder="Aujjessa PDP rebuild"></div>
+        <div class="field"><label for="nhClient">Client</label>
+          <input class="inp" id="nhClient" list="clientList" placeholder="Pick one or type a new one">
+          <datalist id="clientList"></datalist></div>
+        <div class="field"><label for="nhType">Type</label><select class="sel" id="nhType"></select></div>
+        <div class="field"><label for="nhStatus">Status</label><select class="sel" id="nhStatus"></select></div>
+        <div class="field"><label for="nhLink">Link</label><input class="inp" id="nhLink" placeholder="https://"></div>
+      </div>
+      <div class="err" id="nhErr"></div>
+    </div>
+    <div class="dialog-foot">
+      <span class="hint">Only the title is required</span><div class="spacer"></div>
+      <button class="btn ghost" data-close>Cancel</button>
+      <button class="btn pri" id="nhSave">Create head</button>
+    </div>
+  </div>
+</div>
+
+<!-- appearance -------------------------------------------------------- -->
+<div class="scrim" id="stScrim">
+  <div class="dialog wide" role="dialog" aria-modal="true" aria-label="Appearance">
+    <div class="dialog-head"><span class="eyebrow">Appearance</span><div class="spacer"></div>
+      <span class="eyebrow faint">Saved to your account</span></div>
+    <div class="dialog-body">
+      <div class="eyebrow" style="margin-bottom:10px">Mode</div>
+      <div class="mode-grid" id="modeGrid">
+        <button class="mode-card" data-mode-pick="signal">
+          <div class="nm">Signal</div>
+          <div class="ds">The default. Dense, calm, built for scanning a lot of work.</div>
+          <div class="swatches"><i style="background:#07090d"></i><i style="background:#101620"></i><i style="background:#38e1ff"></i><i style="background:#dbe7f0"></i></div>
+        </button>
+        <button class="mode-card" data-mode-pick="terminal">
+          <div class="nm">Terminal</div>
+          <div class="ds">A console. Phosphor on black, square edges, and a command line you can type into.</div>
+          <div class="swatches"><i style="background:#05070a"></i><i style="background:#080c10"></i><i style="background:#3ddc84"></i><i style="background:#9ff5bf"></i></div>
+        </button>
+        <button class="mode-card" data-mode-pick="paper">
+          <div class="nm">Paper</div>
+          <div class="ds">Quiet and serif, sized for reading and writing long details.</div>
+          <div class="swatches"><i style="background:#f6f4ef"></i><i style="background:#fffdf8"></i><i style="background:#9a5b2d"></i><i style="background:#2f2a22"></i></div>
+        </button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
+        <div class="eyebrow">Light or dark</div>
+        <button class="btn sm" id="stTheme">Dark</button>
+        <div class="spacer" style="flex:1"></div>
+        <span class="faint" style="font-size:10.5px">Ctrl , opens this</span>
+      </div>
+
+      <div style="margin-top:22px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <div class="eyebrow">Custom CSS</div>
+          <div class="spacer" style="flex:1"></div>
+          <button class="btn sm ghost" id="cssExample">Insert an example</button>
+          <button class="btn sm ghost" id="cssClear">Clear</button>
+        </div>
+        <textarea class="css-ta" id="cssIn" spellcheck="false"
+          placeholder="/* Your own rules, applied on top of the mode above. */&#10;:root { --accent: #ff8a3d; }&#10;.trow .title { letter-spacing: .02em; }"></textarea>
+        <div class="err" id="cssErr"></div>
+        <div class="note-box">
+          CSS only — no HTML, no <b>@import</b>, no <b>javascript:</b>, and
+          <b>url()</b> must be an https address or a <b>data:image</b>. Anything
+          else is refused. Everything in the mode above is a variable on
+          <b>:root</b>, so one line can repaint the whole app.
+        </div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <span class="hint">Changes preview as you type</span><div class="spacer"></div>
+      <button class="btn ghost" data-close>Close</button>
+      <button class="btn pri" id="stSave">Save appearance</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="config.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

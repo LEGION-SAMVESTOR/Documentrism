@@ -1,0 +1,11 @@
+# Vercel's local link to the project
+.vercel
+
+# OS clutter
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editor
+.vscode/
+.idea/

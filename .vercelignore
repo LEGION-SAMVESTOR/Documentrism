@@ -1,0 +1,6 @@
+# The backend is pasted into Apps Script by hand — it is not part of the site,
+# and there is no reason to serve it from the public domain.
+apps-script.gs
+
+# Docs are for the repo, not the deployment.
+*.md
