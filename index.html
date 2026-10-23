@@ -150,6 +150,9 @@
         <button class="nav-item" data-nav="inbox">
           <span class="ic">◇</span><span class="lbl">Inbox</span><span class="count num" id="cInbox">0</span>
         </button>
+        <button class="nav-item" data-nav="shared">
+          <span class="ic">◈</span><span class="lbl">Shared</span><span class="count num" id="cShared">0</span>
+        </button>
       </div>
 
       <div class="rail-group">
@@ -170,7 +173,6 @@
 
     <div class="rail-foot">
       <div class="row">
-        <button class="btn sm" id="btnExport">Export</button>
         <button class="btn sm" id="btnRefresh">Refresh</button>
       </div>
       <div class="row">
@@ -251,6 +253,8 @@
             <button data-nav="heads">Heads</button><span>/</span><span id="crumbTitle" class="muted">—</span>
           </div>
 
+          <div class="ro-banner hide" id="roBanner"></div>
+
           <div class="head-hero">
             <input class="title-in" id="hTitle" placeholder="Untitled head">
             <div class="meta" id="hMeta"></div>
@@ -305,11 +309,25 @@
                   <div><div class="eyebrow">Created</div><div class="ro" id="hCreated">—</div></div>
                   <div><div class="eyebrow">Last change</div><div class="ro" id="hUpdated">—</div></div>
                   <div><div class="eyebrow">Head id</div><div class="ro faint" id="hId">—</div></div>
+                  <button class="btn sm wide" id="shareOpen">Share this head</button>
                   <button class="btn sm danger wide" id="hArchive">Archive this head</button>
                 </div>
               </div>
             </div>
           </div>
+        </section>
+
+        <section class="view" id="view-shared">
+          <div class="page-head">
+            <div>
+              <h1 id="sharedTitle">Shared with you</h1>
+              <div class="page-sub" id="sharedSub">Work other people have shared with you, read-only.</div>
+            </div>
+            <div class="spacer"></div>
+            <button class="btn sm ghost hide" id="sharedBack">← All people</button>
+            <button class="btn sm ghost" id="sharedOut">What I've shared</button>
+          </div>
+          <div class="panel" id="sharedPanel"><div class="skeleton"><i></i><i></i><i></i></div></div>
         </section>
 
         <section class="view" id="view-inbox">
@@ -381,6 +399,34 @@
   </div>
 </div>
 
+<!-- share ------------------------------------------------------------- -->
+<div class="scrim" id="shScrim">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="Share">
+    <div class="dialog-head">
+      <span class="eyebrow">Share</span><div class="spacer"></div>
+      <span class="eyebrow faint" id="shWhat">—</span>
+    </div>
+    <div class="dialog-body">
+      <div class="field">
+        <label for="shWho">Share with</label>
+        <select class="sel" id="shWho"><option value="">Loading people…</option></select>
+      </div>
+      <div class="note-box">
+        They get a <b>read-only</b> copy in their Shared tab. They cannot edit
+        or archive it, and they never see anything else of yours. Sharing a
+        head also shares every note under it, including ones you add later.
+      </div>
+      <div class="err" id="shErr"></div>
+      <div class="share-list hide" id="shList"></div>
+    </div>
+    <div class="dialog-foot">
+      <div class="spacer"></div>
+      <button class="btn ghost" data-close>Close</button>
+      <button class="btn pri" id="shGo">Share</button>
+    </div>
+  </div>
+</div>
+
 <!-- appearance -------------------------------------------------------- -->
 <div class="scrim" id="stScrim">
   <div class="dialog wide" role="dialog" aria-modal="true" aria-label="Appearance">
@@ -411,6 +457,48 @@
         <button class="btn sm" id="stTheme">Dark</button>
         <div class="spacer" style="flex:1"></div>
         <span class="faint" style="font-size:10.5px">Ctrl , opens this</span>
+      </div>
+
+      <div class="form-grid" style="margin-top:20px">
+        <div class="field">
+          <label for="stAccent">Accent colour</label>
+          <select class="sel" id="stAccent">
+            <option value="default">Mode default</option>
+            <option value="emerald">Emerald</option>
+            <option value="amber">Amber</option>
+            <option value="violet">Violet</option>
+            <option value="magenta">Magenta</option>
+            <option value="crimson">Crimson</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="stFont">Typeface</label>
+          <select class="sel" id="stFont">
+            <option value="mono">Mono — IBM Plex Mono</option>
+            <option value="sans">Sans — Chakra Petch</option>
+            <option value="serif">Serif — Fraunces</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="stSize">Text size</label>
+          <select class="sel" id="stSize">
+            <option value="s">Small</option>
+            <option value="m">Medium</option>
+            <option value="l">Large</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="stDensity">Density</label>
+          <select class="sel" id="stDensity">
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact — more rows on screen</option>
+          </select>
+        </div>
+        <div class="field span">
+          <label class="toggle" style="margin-top:4px">
+            <input type="checkbox" id="stAnim"> Animations and transitions
+          </label>
+        </div>
       </div>
 
       <div style="margin-top:22px">

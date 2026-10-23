@@ -199,6 +199,54 @@
 }
 
 /* --------------------------------------------------------------------------
+   1b. Per-person options
+
+   These sit after the modes so they win in all three, the same way LEDGER
+   layers its accents over its themes. Each is a single attribute on <html>.
+   -------------------------------------------------------------------------- */
+
+/* accent ------------------------------------------------------------------- */
+[data-accent="emerald"]{--accent:#3ddc84;--accent-dim:rgba(61,220,132,.13);--accent-ink:#04120a}
+[data-theme="light"][data-accent="emerald"]{--accent:#0f8a4d;--accent-dim:rgba(15,138,77,.10);--accent-ink:#fff}
+[data-accent="amber"]{--accent:#ffc24b;--accent-dim:rgba(255,194,75,.14);--accent-ink:#1a1403}
+[data-theme="light"][data-accent="amber"]{--accent:#8a5f00;--accent-dim:rgba(138,95,0,.10);--accent-ink:#fff}
+[data-accent="violet"]{--accent:#9d7bff;--accent-dim:rgba(157,123,255,.14);--accent-ink:#0d0620}
+[data-theme="light"][data-accent="violet"]{--accent:#6a3fd8;--accent-dim:rgba(106,63,216,.10);--accent-ink:#fff}
+[data-accent="magenta"]{--accent:#ff5ce1;--accent-dim:rgba(255,92,225,.13);--accent-ink:#1d0418}
+[data-theme="light"][data-accent="magenta"]{--accent:#b0189a;--accent-dim:rgba(176,24,154,.10);--accent-ink:#fff}
+[data-accent="crimson"]{--accent:#ff5c69;--accent-dim:rgba(255,92,105,.14);--accent-ink:#1d0407}
+[data-theme="light"][data-accent="crimson"]{--accent:#c22736;--accent-dim:rgba(194,39,54,.10);--accent-ink:#fff}
+
+/* font --------------------------------------------------------------------- */
+[data-font="mono"]{--font-body:"IBM Plex Mono",ui-monospace,Consolas,monospace}
+[data-font="sans"]{--font-body:"Chakra Petch",system-ui,sans-serif;--fs:14px}
+[data-font="serif"]{--font-body:"Fraunces",Georgia,serif;--fs:15px;--lh:1.68}
+
+/* text size ---------------------------------------------------------------- */
+[data-fsize="s"]{--fs:12.5px}
+[data-fsize="l"]{--fs:15px}
+[data-font="sans"][data-fsize="s"]{--fs:13px}
+[data-font="sans"][data-fsize="l"]{--fs:15.5px}
+[data-font="serif"][data-fsize="s"]{--fs:14px}
+[data-font="serif"][data-fsize="l"]{--fs:16.5px}
+
+/* density ------------------------------------------------------------------ */
+[data-density="compact"]{--pad:18px}
+[data-density="compact"] .trow{padding-top:8px;padding-bottom:8px}
+[data-density="compact"] .note{padding-top:7px;padding-bottom:7px}
+[data-density="compact"] .card-body{padding:13px}
+[data-density="compact"] .inbox-item{padding-top:11px;padding-bottom:11px}
+[data-density="compact"] .filters{padding:10px 13px}
+[data-density="compact"] .rail-group{margin-bottom:15px}
+[data-density="compact"] .trow .sub{display:none}
+
+/* motion ------------------------------------------------------------------- */
+[data-anim="off"] *,[data-anim="off"] *::before,[data-anim="off"] *::after{
+  animation-duration:.001ms !important;animation-iteration-count:1 !important;
+  transition-duration:.001ms !important;
+}
+
+/* --------------------------------------------------------------------------
    2. Base
    -------------------------------------------------------------------------- */
 *{box-sizing:border-box;margin:0;padding:0}
@@ -549,6 +597,61 @@ a:hover{text-decoration:underline}
 .inbox-item .when{margin-top:6px;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .inbox-item .mover{display:flex;gap:8px;align-items:center;flex:0 0 auto;width:300px}
 @media (max-width:860px){.inbox-item{flex-direction:column;gap:12px}.inbox-item .mover{width:100%}}
+
+/* shared -------------------------------------------------------------------- */
+.person{
+  width:100%;display:flex;align-items:center;gap:14px;text-align:left;
+  padding:14px 18px;border-bottom:1px solid var(--line);transition:background .12s;
+}
+.person:last-child{border-bottom:none}
+.person:hover{background:var(--panel-2)}
+.person .av{
+  width:34px;height:34px;flex:0 0 34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--accent-dim);color:var(--accent);
+  font-family:var(--font-disp);font-weight:700;font-size:13px;
+}
+[data-mode="terminal"] .person .av{border-radius:0}
+.person .who{flex:1;min-width:0}
+.person .nm{font-family:var(--font-disp);font-weight:600;font-size:14px;color:var(--ink-strong)}
+.person .un{font-size:11px;color:var(--ink-soft);margin-top:1px}
+.person .n{font-size:11.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+
+.shared-note{padding:14px 18px;border-bottom:1px solid var(--line)}
+.shared-note:last-child{border-bottom:none}
+.shared-note .txt{color:var(--ink);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.shared-note .meta{margin-top:6px;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+
+/* read-only ----------------------------------------------------------------- */
+.ro-banner{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 14px;margin-bottom:14px;border-radius:var(--radius-sm);
+  background:var(--blue-bg);border:1px solid color-mix(in srgb, var(--blue) 32%, transparent);
+  font-size:11.5px;color:var(--ink);
+}
+.ro-banner b{color:var(--ink-strong)}
+body.readonly .composer,
+body.readonly #hDetailSave,
+body.readonly #hExpand,
+body.readonly #hArchive,
+body.readonly .note-acts,
+body.readonly #shareOpen{display:none !important}
+body.readonly .title-in,
+body.readonly .details-ta,
+body.readonly .props .sel,
+body.readonly .props .inp,
+body.readonly .props .toggle{pointer-events:none;opacity:.72}
+body.readonly .title-in:hover{background:transparent}
+
+/* share dialog -------------------------------------------------------------- */
+.share-list{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+.share-row{
+  display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--line);font-size:12px;
+}
+.share-row:last-child{border-bottom:none}
+.share-row .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.share-row .lbl{color:var(--ink-soft);font-size:11px}
 
 /* empty / loading ----------------------------------------------------------- */
 .empty{padding:62px 24px;text-align:center}

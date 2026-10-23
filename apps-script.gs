@@ -31,6 +31,7 @@ var TAB = {
   NOTES: 'Notes',
   LISTS: 'Lists',
   PREFS: 'Prefs',
+  SHARES: 'Shares',
   REPORT: 'Report'
 };
 
@@ -44,7 +45,10 @@ var COLS = {
   Notes:    ['note_id', 'owner_id', 'head_id', 'created_at', 'text', 'type',
              'link', 'details', 'needs_detail', 'updated_at', 'archived'],
   Lists:    ['clients', 'types', 'statuses'],
-  Prefs:    ['owner_id', 'mode', 'theme', 'custom_css', 'updated_at']
+  Prefs:    ['owner_id', 'mode', 'theme', 'accent', 'font', 'fsize', 'density',
+             'anim', 'custom_css', 'updated_at'],
+  Shares:   ['share_id', 'owner_id', 'target_id', 'kind', 'item_id',
+             'created_at', 'revoked']
 };
 
 /** Columns that must never leave this file. */
@@ -96,7 +100,8 @@ var PUBLIC_ACTIONS = { ping: 1, signup: 1, login: 1, resetPassword: 1 };
 /** Actions that change the sheet, and so must never run twice for one request. */
 var WRITE_ACTIONS = {
   createHead: 1, createNote: 1, updateHead: 1, updateNote: 1, moveNote: 1,
-  archiveHead: 1, archiveNote: 1, addClient: 1, savePrefs: 1
+  archiveHead: 1, archiveNote: 1, addClient: 1, savePrefs: 1,
+  shareItem: 1, unshareItem: 1
 };
 
 var OP_TTL_SECONDS = 900;
@@ -186,6 +191,12 @@ function dispatch_(action, body, user) {
       case 'addClient':     return doAddClient(user, body.name);
       case 'savePrefs':     return doSavePrefs(user, body.prefs);
       case 'exportAll':     return doExportAll(user);
+
+      /* --- sharing --- */
+      case 'listPeople':    return doListPeople(user);
+      case 'listShares':    return doListShares(user);
+      case 'shareItem':     return doShareItem(user, body.kind, body.item_id, body.to);
+      case 'unshareItem':   return doUnshareItem(user, body.share_id);
 
       default:
         return { ok: false, error: 'Unknown action: ' + action, code: 'bad_request' };
@@ -623,8 +634,28 @@ function doLogout(token) {
 /* Preferences                                                                */
 /* ========================================================================== */
 
+/** One place that knows what a preference may be. Anything else is ignored. */
+var PREF_CHOICES = {
+  mode:    ['signal', 'terminal', 'paper'],
+  theme:   ['dark', 'light'],
+  accent:  ['default', 'emerald', 'amber', 'violet', 'magenta', 'crimson'],
+  font:    ['mono', 'sans', 'serif'],
+  fsize:   ['s', 'm', 'l'],
+  density: ['comfortable', 'compact'],
+  anim:    ['on', 'off']
+};
+
 function defaultPrefs_() {
-  return { mode: 'signal', theme: 'dark', custom_css: '' };
+  return {
+    mode: 'signal', theme: 'dark', accent: 'default', font: 'mono',
+    fsize: 'm', density: 'comfortable', anim: 'on', custom_css: ''
+  };
+}
+
+function pick_(value, name) {
+  var v = str_(value).toLowerCase();
+  var allowed = PREF_CHOICES[name];
+  return allowed.indexOf(v) > -1 ? v : defaultPrefs_()[name];
 }
 
 function prefsFor_(ownerId) {
@@ -633,11 +664,10 @@ function prefsFor_(ownerId) {
   for (var i = 0; i < t.rows.length; i++) {
     if (str_(t.rows[i][c]) === ownerId) {
       var o = toObj_(t, t.rows[i], COLS.Prefs);
-      return {
-        mode: str_(o.mode) || 'signal',
-        theme: str_(o.theme) || 'dark',
-        custom_css: String(o.custom_css || '')
-      };
+      var out = {};
+      Object.keys(PREF_CHOICES).forEach(function (k) { out[k] = pick_(o[k], k); });
+      out.custom_css = String(o.custom_css || '');
+      return out;
     }
   }
   return defaultPrefs_();
@@ -655,15 +685,16 @@ function doSavePrefs(user, prefs) {
     var t = table_(TAB.PREFS);
     var ownerId = str_(user.user_id);
     var rowNum = findRow_(t, 'owner_id', ownerId);
-    var rec = {
-      owner_id: ownerId,
-      mode: str_(prefs.mode) || 'signal',
-      theme: str_(prefs.theme) || 'dark',
-      custom_css: css,
-      updated_at: new Date()
-    };
+
+    var rec = { owner_id: ownerId, custom_css: css, updated_at: new Date() };
+    var out = { custom_css: css };
+    Object.keys(PREF_CHOICES).forEach(function (k) {
+      rec[k] = pick_(prefs[k], k);
+      out[k] = rec[k];
+    });
+
     if (rowNum > 0) { patchRow_(t, rowNum, rec); } else { appendRow_(t, rec); }
-    return { ok: true, prefs: { mode: rec.mode, theme: rec.theme, custom_css: css } };
+    return { ok: true, prefs: out };
   });
 }
 
@@ -813,15 +844,52 @@ function doBootstrap(user) {
   };
 }
 
+/**
+ * Opens a head the caller owns, or one that was shared with them. A shared
+ * head comes back with readonly:true and the owner's name; every write action
+ * still checks ownership separately, so readonly is a label for the interface,
+ * not the thing keeping anyone out.
+ */
 function doGetHead(user, headId) {
-  var found = requireOwnHead_(user, headId);
-  var head = clean_(toObj_(found.t, found.row, COLS.Heads), COLS.Heads);
+  headId = str_(headId);
+  var ht = table_(TAB.HEADS);
+  var rowNum = findRow_(ht, 'head_id', headId);
+  if (rowNum < 0) { fail_('That head does not exist.', 'not_found'); }
+
+  var row = ht.rows[rowNum - 2];
+  var ownerId = str_(row[col_(ht, 'owner_id')]);
+  var mine = ownerId === str_(user.user_id);
+  if (!mine && !sharedWithMe_(user, 'head', headId)) {
+    fail_('That head does not exist.', 'not_found');
+  }
+
+  var head = clean_(toObj_(ht, row, COLS.Heads), COLS.Heads);
   head.archived = yes_(head.archived) ? 'Yes' : 'No';
 
-  var notes = ownedNotes_(user, function (n) { return n.head_id === str_(headId); });
-  notes.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });
+  var notes = notesOfHead_(headId);
   head.note_count = notes.length;
-  return { ok: true, head: head, notes: notes };
+
+  var out = { ok: true, head: head, notes: notes, readonly: !mine };
+  if (!mine) {
+    var who = usersIndex_()[ownerId];
+    out.owner = who ? { name: who.name, username: who.username } : null;
+  }
+  return out;
+}
+
+/** Live notes under a head, oldest first. Access is checked by the caller. */
+function notesOfHead_(headId) {
+  var nt = table_(TAB.NOTES);
+  var idCol = col_(nt, 'note_id'), headCol = col_(nt, 'head_id'), archCol = nt.idx.archived;
+  var out = [];
+  nt.rows.forEach(function (r) {
+    if (!str_(r[idCol])) { return; }
+    if (str_(r[headCol]) !== headId) { return; }
+    if (archCol !== undefined && yes_(r[archCol])) { return; }
+    out.push(clean_(toObj_(nt, r, COLS.Notes), COLS.Notes));
+  });
+  out.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });
+  return out;
 }
 
 function doCreateHead(user, data) {
@@ -972,6 +1040,211 @@ function doExportAll(user) {
       notes: notes
     }
   };
+}
+
+/* ========================================================================== */
+/* Sharing                                                                    */
+/* ========================================================================== */
+
+/**
+ * Sharing is one-way and read-only. Sharing a head shares that head and every
+ * note under it, now and later; sharing a note shares only that note. The
+ * person it was shared with can read it and nothing else — every write action
+ * still goes through requireOwnHead_/requireOwnNote_, which only ever match
+ * rows the caller owns.
+ *
+ * Nothing is deleted here either: unsharing sets revoked to Yes.
+ */
+
+function usersIndex_() {
+  var t = usersTable_();
+  var byId = {};
+  t.rows.forEach(function (r) {
+    var o = toObj_(t, r, COLS.Users);
+    var id = str_(o.user_id);
+    if (id) {
+      byId[id] = { user_id: id, username: str_(o.username), name: str_(o.name),
+                   status: str_(o.status) };
+    }
+  });
+  return byId;
+}
+
+/**
+ * The directory used by the share box. Usernames and display names only — no
+ * birthdays, no hashes. Everyone signed in can see who else has an account,
+ * which is the price of being able to share with them by name.
+ */
+function doListPeople(user) {
+  var byId = usersIndex_();
+  var me = str_(user.user_id);
+  var out = [];
+  Object.keys(byId).forEach(function (id) {
+    if (id === me) { return; }
+    if (byId[id].status.toLowerCase() === 'disabled') { return; }
+    out.push({ user_id: id, username: byId[id].username, name: byId[id].name });
+  });
+  out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  return { ok: true, people: out };
+}
+
+function liveShares_() {
+  var t = table_(TAB.SHARES);
+  var out = [];
+  var idCol = col_(t, 'share_id');
+  t.rows.forEach(function (r) {
+    if (!str_(r[idCol])) { return; }
+    var o = clean_(toObj_(t, r, COLS.Shares), COLS.Shares);
+    if (yes_(o.revoked)) { return; }
+    out.push(o);
+  });
+  return out;
+}
+
+/** True when this item was shared with the caller by its owner. */
+function sharedWithMe_(user, kind, itemId) {
+  var me = str_(user.user_id);
+  return liveShares_().some(function (s) {
+    return s.target_id === me && s.kind === kind && s.item_id === str_(itemId);
+  });
+}
+
+function doShareItem(user, kind, itemId, toUsername) {
+  kind = str_(kind);
+  itemId = str_(itemId);
+  if (kind !== 'head' && kind !== 'note') { fail_('Can only share a head or a note.', 'bad_request'); }
+
+  // You can only share something you own — checked before anything else.
+  var title = '';
+  if (kind === 'head') {
+    var fh = requireOwnHead_(user, itemId);
+    title = str_(fh.row[col_(fh.t, 'title')]);
+  } else {
+    var fn = requireOwnNote_(user, itemId);
+    title = str_(fn.row[col_(fn.t, 'text')]).slice(0, 80);
+  }
+
+  var target = findUserBy_('username', toUsername) || findUserBy_('name', toUsername);
+  if (!target) { fail_('No account called "' + str_(toUsername) + '".', 'not_found'); }
+  var targetId = str_(target.user_id);
+  if (targetId === str_(user.user_id)) { fail_('That is already yours.', 'bad_request'); }
+
+  var t = table_(TAB.SHARES);
+  var existing = liveShares_().filter(function (s) {
+    return s.owner_id === str_(user.user_id) && s.target_id === targetId &&
+           s.kind === kind && s.item_id === itemId;
+  });
+  if (existing.length) {
+    return { ok: true, share: existing[0], already: true, title: title };
+  }
+
+  var rec = {
+    share_id: newId_('S'),
+    owner_id: str_(user.user_id),
+    target_id: targetId,
+    kind: kind,
+    item_id: itemId,
+    created_at: new Date(),
+    revoked: 'No'
+  };
+  appendRow_(t, rec);
+  return { ok: true, share: clean_(rec, COLS.Shares), title: title,
+           to: { username: str_(target.username), name: str_(target.name) } };
+}
+
+function doUnshareItem(user, shareId) {
+  var t = table_(TAB.SHARES);
+  var rowNum = findRow_(t, 'share_id', str_(shareId));
+  if (rowNum < 0) { fail_('That share does not exist.', 'not_found'); }
+  var row = t.rows[rowNum - 2];
+  if (str_(row[col_(t, 'owner_id')]) !== str_(user.user_id)) {
+    fail_('That share does not exist.', 'not_found');   // not yours to revoke
+  }
+  patchRow_(t, rowNum, { revoked: 'Yes' });
+  return { ok: true };
+}
+
+/**
+ * Everything the Shared tab needs in one request: what others have shared with
+ * me, grouped by person, and what I have shared out, so it can be revoked.
+ */
+function doListShares(user) {
+  var me = str_(user.user_id);
+  var shares = liveShares_();
+  var byId = usersIndex_();
+
+  var ht = table_(TAB.HEADS), nt = table_(TAB.NOTES);
+  var headById = {}, noteById = {};
+  var hId = col_(ht, 'head_id'), hArch = ht.idx.archived;
+  ht.rows.forEach(function (r) {
+    var id = str_(r[hId]);
+    if (!id) { return; }
+    if (hArch !== undefined && yes_(r[hArch])) { return; }
+    headById[id] = clean_(toObj_(ht, r, COLS.Heads), COLS.Heads);
+  });
+  var nId = col_(nt, 'note_id'), nArch = nt.idx.archived;
+  var notesByHead = {};
+  nt.rows.forEach(function (r) {
+    var id = str_(r[nId]);
+    if (!id) { return; }
+    if (nArch !== undefined && yes_(r[nArch])) { return; }
+    var o = clean_(toObj_(nt, r, COLS.Notes), COLS.Notes);
+    noteById[id] = o;
+    if (o.head_id) { (notesByHead[o.head_id] = notesByHead[o.head_id] || []).push(o); }
+  });
+
+  var incomingBy = {}, outgoing = [];
+
+  shares.forEach(function (s) {
+    if (s.target_id === me) {
+      var who = byId[s.owner_id];
+      if (!who) { return; }
+      var slot = incomingBy[s.owner_id] || (incomingBy[s.owner_id] = {
+        user_id: s.owner_id, name: who.name, username: who.username,
+        heads: [], notes: []
+      });
+      if (s.kind === 'head') {
+        var h = headById[s.item_id];
+        if (h) {
+          h = JSON.parse(JSON.stringify(h));
+          h.note_count = (notesByHead[s.item_id] || []).length;
+          h.share_id = s.share_id;
+          slot.heads.push(h);
+        }
+      } else {
+        var n = noteById[s.item_id];
+        if (n) {
+          n = JSON.parse(JSON.stringify(n));
+          n.share_id = s.share_id;
+          n.head_title = n.head_id && headById[n.head_id] ? headById[n.head_id].title : '';
+          slot.notes.push(n);
+        }
+      }
+    }
+
+    if (s.owner_id === me) {
+      var to = byId[s.target_id];
+      var label = s.kind === 'head'
+        ? (headById[s.item_id] ? headById[s.item_id].title : '(gone)')
+        : (noteById[s.item_id] ? noteById[s.item_id].text.slice(0, 80) : '(gone)');
+      outgoing.push({
+        share_id: s.share_id, kind: s.kind, item_id: s.item_id, label: label,
+        to_name: to ? to.name : '(unknown)', to_username: to ? to.username : '',
+        created_at: s.created_at
+      });
+    }
+  });
+
+  var incoming = Object.keys(incomingBy).map(function (k) { return incomingBy[k]; });
+  incoming.forEach(function (p) {
+    p.heads.sort(function (a, b) { return (b.updated_at || '').localeCompare(a.updated_at || ''); });
+    p.notes.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+    p.count = p.heads.length + p.notes.length;
+  });
+  incoming.sort(function (a, b) { return a.name.localeCompare(b.name); });
+  outgoing.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+
+  return { ok: true, incoming: incoming, outgoing: outgoing };
 }
 
 /* ========================================================================== */

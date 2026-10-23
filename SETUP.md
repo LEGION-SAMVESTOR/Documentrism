@@ -211,13 +211,26 @@ warns you if you try to close the tab with work still waiting.
 
 Click **Appearance** in the bottom left, or press `Ctrl + ,`.
 
+**Sharing.** Open a head and press **Share this head**, or press the ◈ button
+on a single note. Pick a person and they get a read-only copy in their
+**Shared** tab. Sharing a head also shares every note under it, including ones
+you add later. They cannot edit or archive it, and they see nothing else of
+yours. **What I've shared** lists everything you have sent out, with a Revoke
+button that cuts access immediately.
+
+Their **Shared** tab shows the people who have shared with them; clicking a
+name opens that person's items.
+
 **Three modes:**
 
 - **Signal** — the default. Dense and calm, for scanning a lot of work.
 - **Terminal** — a console. Green on black, square edges, and a command line.
 - **Paper** — quiet and serif, for reading and writing long details.
 
-Each works in light or dark.
+Each works in light or dark, and on top of the mode you can set the **accent
+colour**, **typeface** (mono, sans or serif), **text size**, **density**
+(compact fits more rows on screen) and turn **animations** off. All of it is
+saved to your account, so it follows you to another computer.
 
 ## The command line (Terminal mode)
 
@@ -259,7 +272,13 @@ Your choice is saved to your account, so it follows you to another computer.
 anyone you give the spreadsheet to sees *everyone's* rows, and can unhide the
 Users tab. Hiding a tab is tidiness, not protection.
 
-To share work, use **Export** in the app, or send the Report as a PDF.
+To share work with someone who has an account, use the **Share** button. For
+anyone else, send the Report as a PDF, or **File → Download** from the sheet.
+
+There is no Export button in the app any more. The sheet itself is the backup:
+**File → Download → Microsoft Excel** covers everybody's work in one file. In
+Terminal mode, the `export` command still downloads your own data as JSON
+and CSV.
 
 **Passwords are stored hashed**, with a different random salt each. They cannot
 be read back out of the sheet, by you or anyone else. If someone forgets theirs,

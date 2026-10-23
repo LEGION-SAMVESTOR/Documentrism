@@ -15,7 +15,13 @@
 /* --- state ---------------------------------------------------------------- */
 const S = {
   user: null,
-  prefs: { mode: "signal", theme: "dark", custom_css: "" },
+  prefs: {
+    mode: "signal", theme: "dark", accent: "default", font: "mono",
+    fsize: "m", density: "comfortable", anim: "on", custom_css: ""
+  },
+  shares: { incoming: [], outgoing: [] },
+  sharedPerson: null,      // whose shared items are open, if any
+  readonly: false,         // the head on screen belongs to someone else
   lists: { clients: [], types: [], statuses: [] },
   heads: [],
   inbox: [],
@@ -170,17 +176,31 @@ function sync(state, text) {
 /* ==========================================================================
    Skin — mode, theme, custom CSS
    ========================================================================== */
+const SKIN_KEYS = ["mode", "theme", "accent", "font", "fsize", "density", "anim"];
+
 function applySkin() {
-  document.documentElement.dataset.mode = S.prefs.mode || "signal";
-  document.documentElement.dataset.theme = S.prefs.theme || "dark";
+  const d = document.documentElement.dataset;
+  SKIN_KEYS.forEach(k => { d[k] = S.prefs[k] || ""; });
   applyCustomCss(S.prefs.custom_css || "");
+
+  // reflect the current values back into the Appearance panel
+  const set = (sel, val) => { const el = $(sel); if (el && el.value !== val) el.value = val; };
   const t = $("#stTheme");
   if (t) t.textContent = S.prefs.theme === "dark" ? "Dark" : "Light";
   $$("[data-mode-pick]").forEach(b => b.classList.toggle("on", b.dataset.modePick === S.prefs.mode));
+  set("#stAccent", S.prefs.accent);
+  set("#stFont", S.prefs.font);
+  set("#stSize", S.prefs.fsize);
+  set("#stDensity", S.prefs.density);
+  const anim = $("#stAnim");
+  if (anim) anim.checked = S.prefs.anim !== "off";
   const cssIn = $("#cssIn");
   if (cssIn && cssIn.value !== (S.prefs.custom_css || "")) cssIn.value = S.prefs.custom_css || "";
+
   // keep a copy on the device so the next load paints correctly before login
-  local("skin", { mode: S.prefs.mode, theme: S.prefs.theme, custom_css: S.prefs.custom_css });
+  const skin = { custom_css: S.prefs.custom_css };
+  SKIN_KEYS.forEach(k => { skin[k] = S.prefs[k]; });
+  local("skin", skin);
 }
 
 /** Written as TEXT into a <style> element — never as markup, anywhere. */
@@ -357,6 +377,9 @@ function signOut() {
 
   API.signOut();
   S.user = null; S.heads = []; S.inbox = []; S.current = null; S.lastSync = 0;
+  S.shares = { incoming: [], outgoing: [] };
+  S.sharedPerson = null; S.readonly = false;
+  document.body.classList.remove("readonly");
   $("#shell").classList.add("hide");
   $("#liId").value = ""; $("#liPw").value = "";
   showStep("stepLogin");
@@ -489,6 +512,10 @@ async function openHead(headId, opts) {
 
   // The row is already in the heads list, and the notes may be cached from
   // last time — so the page can be whole before the request is even sent.
+  // A head opened from the Shared tab is not in your own list, so there is
+  // nothing to paint from — it waits for the server, and arrives read-only.
+  if (!opts.quiet) { S.readonly = false; S.currentOwner = null; applyReadonly(); }
+
   const known = headRow(headId);
   const cachedNotes = local(notesKey(headId));
   if (known && !opts.quiet) {
@@ -507,7 +534,9 @@ async function openHead(headId, opts) {
     // Don't let a slow answer overwrite a head the user has since moved on from
     if (S.current && S.current.head.head_id !== headId && opts.quiet) return;
     S.current = { head: res.head, notes: res.notes };
-    local(notesKey(headId), res.notes);
+    S.readonly = !!res.readonly;
+    S.currentOwner = res.owner || null;
+    if (!S.readonly) local(notesKey(headId), res.notes);   // never cache someone else's
     paintHead();
   } catch (e) {
     if (opts.quiet) return;                 // a quiet refresh keeps what is shown
@@ -519,8 +548,24 @@ async function openHead(headId, opts) {
 
 function headRow(id) { return S.heads.find(h => h.head_id === id) || null; }
 
+/** Puts the page into, or out of, read-only. CSS does the hiding. */
+function applyReadonly() {
+  document.body.classList.toggle("readonly", !!S.readonly);
+  const banner = $("#roBanner");
+  if (!banner) return;
+  if (S.readonly) {
+    const who = S.currentOwner ? `${S.currentOwner.name} (${S.currentOwner.username})` : "someone else";
+    banner.innerHTML = `<span class="dot" style="background:var(--blue)"></span>
+      <span>Shared with you by <b>${esc(who)}</b> — you can read this, not change it.</span>`;
+    banner.classList.remove("hide");
+  } else {
+    banner.classList.add("hide");
+  }
+}
+
 function paintHead() {
   const h = S.current.head;
+  applyReadonly();
   $("#crumbTitle").textContent = h.title;
   $("#hTitle").value = h.title;
   $("#hId").textContent = h.head_id;
@@ -589,6 +634,7 @@ function noteHtml(n) {
       <div class="note-time num">${esc(clockOf(n.created_at))}</div>
       <div class="note-acts">
         <button class="icon-btn" data-act="expand" title="Open full details">⤢</button>
+        <button class="icon-btn" data-act="share" title="Share this note">◈</button>
         <button class="icon-btn" data-act="archive" title="Archive this note">✕</button>
       </div>
     </div>
@@ -631,6 +677,7 @@ function wireNotes(scope) {
       ev.stopPropagation();
       const act = b.dataset.act;
       if (act === "expand") { el.classList.toggle("open"); b.classList.toggle("on"); }
+      if (act === "share") openShare("note", id, n.text.slice(0, 60));
       if (act === "archive") archiveNoteUi(id);
       if (act === "headings") {
         const ta = $('[data-f="details"]', el);
@@ -693,6 +740,9 @@ function withHeadings(current, type) {
 function patchHead(patch, repaint) {
   const h = S.current?.head;
   if (!h) return;
+  // The controls are hidden in read-only, but never rely on the interface
+  // alone — the server refuses these anyway.
+  if (S.readonly) { toast("This was shared with you — you can't change it.", "bad"); return; }
   if ("needs_detail" in patch) flagDelta(h.needs_detail, patch.needs_detail);
   Object.assign(h, patch);
   const row = headRow(h.head_id);
@@ -702,6 +752,7 @@ function patchHead(patch, repaint) {
 }
 
 function addNoteHere() {
+  if (S.readonly) { toast("This was shared with you — you can't add to it.", "bad"); return; }
   const ta = $("#hNoteText");
   const text = ta.value.trim();
   if (!text) { ta.focus(); return; }
@@ -798,6 +849,199 @@ function moveFromInbox(noteId, headId) {
   renderInbox(); renderHeads(); paintStats();
   API.enqueue({ action: "moveNote", payload: { note_id: noteId, head_id: headId } });
   toast(`Moved into ${head ? head.title : "the head"}.`, "good");
+}
+
+/* ==========================================================================
+   Sharing
+
+   Read-only and one way. The Shared tab shows people first, then what each of
+   them has sent you — a list of names is easier to scan than one long pile of
+   everyone's work mixed together.
+   ========================================================================== */
+async function loadShares(opts) {
+  opts = opts || {};
+  try {
+    const res = await API.call("listShares");
+    S.shares = { incoming: res.incoming || [], outgoing: res.outgoing || [] };
+    const total = S.shares.incoming.reduce((n, p) => n + p.count, 0);
+    $("#cShared").textContent = total;
+    if (!opts.quiet) renderShared();
+    return true;
+  } catch (e) {
+    if (!opts.quiet) {
+      $("#sharedPanel").innerHTML = emptyState("⚠", "Could not load shares", e.message);
+    }
+    return false;
+  }
+}
+
+function renderShared() {
+  const box = $("#sharedPanel");
+  $("#sharedBack").classList.toggle("hide", !S.sharedPerson);
+
+  /* what I've shared out */
+  if (S.sharedPerson === "__outgoing__") {
+    $("#sharedTitle").textContent = "What you've shared";
+    $("#sharedSub").textContent = "Things you've sent to other people. Revoking stops their access at once.";
+    const rows = S.shares.outgoing;
+    if (!rows.length) {
+      box.innerHTML = emptyState("○", "You haven't shared anything",
+        "Open a head and press Share, or use the share button on a note.");
+      return;
+    }
+    box.innerHTML = rows.map(s => `
+      <div class="shared-note" data-share="${esc(s.share_id)}">
+        <div class="txt">${esc(s.label)}</div>
+        <div class="meta">${s.kind === "head" ? "Head" : "Note"} · shared with
+          ${esc(s.to_name)} (${esc(s.to_username)}) · ${esc(dateOf(s.created_at))}</div>
+        <div style="margin-top:9px"><button class="btn sm danger" data-revoke>Revoke</button></div>
+      </div>`).join("");
+    $$("[data-revoke]", box).forEach(b => on(b, "click", () => {
+      revokeShare(b.closest("[data-share]").dataset.share);
+    }));
+    return;
+  }
+
+  /* one person's shared items */
+  if (S.sharedPerson) {
+    const p = S.shares.incoming.find(x => x.user_id === S.sharedPerson);
+    if (!p) { S.sharedPerson = null; renderShared(); return; }
+    $("#sharedTitle").textContent = p.name;
+    $("#sharedSub").textContent = `Shared with you by ${p.username}. You can read these, not change them.`;
+
+    let html = "";
+    p.heads.forEach(h => {
+      html += `
+      <button class="trow" data-shared-head="${esc(h.head_id)}">
+        <div>
+          <div class="title">${esc(h.title)}</div>
+          <div class="sub">head · ${h.note_count} note${h.note_count === 1 ? "" : "s"}</div>
+        </div>
+        <div>${h.client ? `<span class="chip client">${esc(h.client)}</span>` : `<span class="faint">—</span>`}</div>
+        <div class="c-type">${h.type ? `<span class="chip">${esc(h.type)}</span>` : ""}</div>
+        <div>${statusChip(h.status)}</div>
+        <div class="r num c-notes">${h.note_count}</div>
+        <div class="r c-when">${esc(ago(h.updated_at || h.created_at))}</div>
+      </button>`;
+    });
+    p.notes.forEach(n => {
+      html += `
+      <div class="shared-note">
+        <div class="txt">${esc(n.text)}</div>
+        <div class="meta">note · ${esc(fullOf(n.created_at))}${
+          n.head_title ? " · from " + esc(n.head_title) : ""}</div>
+        ${n.details ? `<div class="meta" style="margin-top:8px;white-space:pre-wrap;color:var(--ink-soft)">${esc(n.details)}</div>` : ""}
+      </div>`;
+    });
+
+    box.innerHTML = html || emptyState("○", "Nothing here", "They have not shared anything yet.");
+    $$("[data-shared-head]", box).forEach(el =>
+      on(el, "click", () => openHead(el.dataset.sharedHead)));
+    return;
+  }
+
+  /* the list of people */
+  $("#sharedTitle").textContent = "Shared with you";
+  $("#sharedSub").textContent = "Work other people have shared with you, read-only.";
+  const people = S.shares.incoming;
+  if (!people.length) {
+    box.innerHTML = emptyState("◈", "Nothing shared with you yet",
+      "When someone shares a head or a note, their name appears here.");
+    return;
+  }
+  box.innerHTML = people.map(p => `
+    <button class="person" data-person="${esc(p.user_id)}">
+      <span class="av">${esc((p.name || p.username).trim().charAt(0).toUpperCase())}</span>
+      <span class="who">
+        <span class="nm">${esc(p.name)}</span>
+        <span class="un">${esc(p.username)}</span>
+      </span>
+      <span class="n">${p.count} item${p.count === 1 ? "" : "s"}</span>
+    </button>`).join("");
+  $$("[data-person]", box).forEach(el => on(el, "click", () => {
+    S.sharedPerson = el.dataset.person;
+    renderShared();
+  }));
+}
+
+async function revokeShare(shareId) {
+  S.shares.outgoing = S.shares.outgoing.filter(s => s.share_id !== shareId);
+  renderShared();
+  try {
+    await API.call("unshareItem", { share_id: shareId });
+    toast("Share revoked.", "good");
+  } catch (e) {
+    toast(e.message, "bad");
+    loadShares();
+  }
+}
+
+/* --- the share dialog ----------------------------------------------------- */
+let sharing = null;      // { kind, item_id, label }
+
+async function openShare(kind, itemId, label) {
+  sharing = { kind, item_id: itemId, label };
+  $("#shWhat").textContent = kind === "head" ? "A head and its notes" : "One note";
+  clearErr("#shErr");
+  openDialog("#shScrim");
+
+  const sel = $("#shWho");
+  sel.innerHTML = `<option value="">Loading people…</option>`;
+  renderShareList();
+
+  try {
+    const res = await API.call("listPeople");
+    const people = res.people || [];
+    sel.innerHTML = people.length
+      ? `<option value="">Choose a person…</option>` +
+        people.map(p => `<option value="${esc(p.username)}">${esc(p.name)} (${esc(p.username)})</option>`).join("")
+      : `<option value="">Nobody else has an account yet</option>`;
+  } catch (e) {
+    sel.innerHTML = `<option value="">Could not load people</option>`;
+    showErr("#shErr", e.message);
+  }
+}
+
+/** Who this item is already shared with, so it can be taken back here. */
+function renderShareList() {
+  const box = $("#shList");
+  if (!sharing) { box.classList.add("hide"); return; }
+  const rows = S.shares.outgoing.filter(s => s.item_id === sharing.item_id);
+  if (!rows.length) { box.classList.add("hide"); box.innerHTML = ""; return; }
+  box.classList.remove("hide");
+  box.innerHTML = `<div class="eyebrow" style="margin-bottom:8px">Already shared with</div>` +
+    rows.map(s => `
+      <div class="share-row" data-share="${esc(s.share_id)}">
+        <span class="who">${esc(s.to_name)} <span class="lbl">${esc(s.to_username)}</span></span>
+        <button class="btn sm danger" data-revoke>Revoke</button>
+      </div>`).join("");
+  $$("[data-revoke]", box).forEach(b => on(b, "click", async () => {
+    await revokeShare(b.closest("[data-share]").dataset.share);
+    renderShareList();
+  }));
+}
+
+async function doShare() {
+  const to = $("#shWho").value;
+  if (!to) { showErr("#shErr", "Choose who to share with."); return; }
+  if (!sharing) return;
+  clearErr("#shErr");
+
+  const btn = $("#shGo");
+  btn.disabled = true; btn.textContent = "Sharing…";
+  try {
+    const res = await API.call("shareItem", {
+      kind: sharing.kind, item_id: sharing.item_id, to
+    });
+    toast(res.already ? "Already shared with them." : "Shared.", "good");
+    await loadShares({ quiet: true });
+    renderShareList();
+    $("#shWho").value = "";
+  } catch (e) {
+    showErr("#shErr", e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Share";
+  }
 }
 
 /* ==========================================================================
@@ -1063,6 +1307,7 @@ function show(view) {
   $("#surface").scrollTop = 0;
   if (view === "inbox") renderInbox();
   if (view === "heads") renderHeads();
+  if (view === "shared") { renderShared(); loadShares(); }
 }
 
 function openDialog(sel, focusSel) {
@@ -1095,6 +1340,20 @@ function wireSettings() {
 
   on($("#stTheme"), "click", () => {
     S.prefs.theme = S.prefs.theme === "dark" ? "light" : "dark";
+    applySkin();
+  });
+
+  // Every option previews immediately; Save writes it to the account.
+  const bind = (sel, key) => on($(sel), "change", e => {
+    S.prefs[key] = e.target.value;
+    applySkin();
+  });
+  bind("#stAccent", "accent");
+  bind("#stFont", "font");
+  bind("#stSize", "fsize");
+  bind("#stDensity", "density");
+  on($("#stAnim"), "change", e => {
+    S.prefs.anim = e.target.checked ? "on" : "off";
     applySkin();
   });
 
@@ -1181,8 +1440,18 @@ function wire() {
     toast("Head archived. Nothing was deleted from the sheet.", "good");
   });
 
-  on($("#btnExport"), "click", exportAll);
   on($("#btnRefresh"), "click", () => reload({ loud: true }));
+
+  /* sharing */
+  on($("#shareOpen"), "click", () => {
+    if (S.current) openShare("head", S.current.head.head_id, S.current.head.title);
+  });
+  on($("#shGo"), "click", doShare);
+  on($("#sharedBack"), "click", () => { S.sharedPerson = null; renderShared(); });
+  on($("#sharedOut"), "click", () => {
+    S.sharedPerson = S.sharedPerson === "__outgoing__" ? null : "__outgoing__";
+    renderShared();
+  });
   on($("#btnSettings"), "click", () => openDialog("#stScrim"));
   on($("#btnSignOut"), "click", signOut);
   on($("#syncRetry"), "click", () => API.retry());
@@ -1250,6 +1519,7 @@ async function reload(opts) {
     paintStats();
     saveCache();
     S.lastSync = Date.now();
+    loadShares({ quiet: S.view !== "shared" });   // keeps the sidebar count true
 
     if (loud) sync("saved", "Up to date");
     else if (opts.background) sync("saved", "Up to date");

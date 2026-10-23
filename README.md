@@ -23,7 +23,7 @@ browser (documentrism.vercel.app)
 Apps Script web app  (deployed "Anyone", runs as the sheet's owner)
    │
    ▼
-one Google Sheet — Users · Sessions · Prefs · Heads · Notes · Lists · Report
+one Google Sheet — Users · Sessions · Prefs · Shares · Heads · Notes · Lists · Report
 ```
 
 The backend URL lives in **`config.js`** and nowhere else. It ships to the
@@ -130,6 +130,29 @@ Optimistic rows carry a `tmp-…` id and are swapped for the real row on success
 
 ---
 
+## Sharing
+
+One way and read-only. Sharing a head shares that head and every note under
+it, now and later; sharing a note shares only that note.
+
+`getHead` lets a head through if the caller owns it **or** has a live share for
+it, and marks the response `readonly`. That flag only drives the interface —
+every write still goes through `requireOwnHead_` / `requireOwnNote_`, which
+match owned rows and nothing else, so a recipient cannot write even if they
+drive the API directly.
+
+The **Shared** tab lists people first, then what each has sent, because a list
+of names scans better than everyone's work in one pile. A second view shows
+what you have shared out, with revoke. Revoking sets `revoked` to `Yes`; the
+row stays.
+
+`listPeople` returns every active account's username and display name so the
+share box can offer them. That is a directory visible to everyone signed in —
+names only, no birthdays, no hashes.
+
+Shared content is never written to the local cache, which is keyed per account
+and meant for your own work.
+
 ## Design modes
 
 Three modes, chosen per person and stored on their account, so the choice
@@ -195,6 +218,10 @@ owner. Sharing work is what each person's **Export** is for.
 - Clients, types and statuses in `Lists` are shared by everyone. Notes and heads
   are not.
 - No installable CLI. The console is in the browser.
+- Sharing is read-only and one way. There is no shared editing, and no
+  notification when something is shared with you — it appears in the tab.
+- The Export button is gone at your request. The terminal `export` command
+  still works, and the sheet itself remains the real backup (File → Download).
 
 ---
 
