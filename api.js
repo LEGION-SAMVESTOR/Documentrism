@@ -41,6 +41,31 @@ const API = (function () {
   const user    = () => read(K_USER, null);
   const setUser = u => write(K_USER, u || null);
 
+  /* ---------- write identity ----------
+     A POST to Apps Script is answered with a redirect, and following it can
+     replay the POST — which wrote every note twice. A retry after a timeout
+     can do the same, because a request that timed out may still have landed.
+     So each write carries an op_id the server uses to run it exactly once.
+
+     The id is stamped onto the payload ONCE and reused on every retry of that
+     same job. Generating a fresh one per attempt would defeat the whole thing. */
+  const WRITE_ACTIONS = {
+    createHead: 1, createNote: 1, updateHead: 1, updateNote: 1, moveNote: 1,
+    archiveHead: 1, archiveNote: 1, addClient: 1, savePrefs: 1
+  };
+
+  function opId() {
+    try { return crypto.randomUUID(); }
+    catch (e) { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+  }
+
+  function stampWrite(action, payload) {
+    if (!WRITE_ACTIONS[action]) { return payload; }
+    const p = payload || {};
+    if (!p.op_id) { p.op_id = opId(); }
+    return p;
+  }
+
   function tagged(message, code) {
     const e = new Error(message);
     e.code = code || "server";
@@ -56,7 +81,7 @@ const API = (function () {
       throw tagged("This site has no backend address in config.js.", "config");
     }
 
-    const body = Object.assign({ action }, payload || {});
+    const body = Object.assign({ action }, stampWrite(action, payload) || {});
     if (body.token === undefined && token()) { body.token = token(); }
     if (!body.agent) { body.agent = navigator.userAgent.slice(0, 120); }
 
@@ -121,6 +146,9 @@ const API = (function () {
   let busy = false;
 
   function enqueue(job) {           // { action, payload, done, fail, revive }
+    // Stamped here, before the first attempt, so every retry of this job
+    // carries the same id and the server treats them as one write.
+    job.payload = stampWrite(job.action, job.payload);
     queue.push(job);
     state.queued = queue.length;
     pump();

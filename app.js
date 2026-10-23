@@ -24,6 +24,7 @@ const S = {
   // needs_detail spans heads AND every note, including ones not loaded here,
   // so the count comes from the server and is nudged as things change.
   needsDetail: 0,
+  lastSync: 0,
   filters: { q: "", client: "", type: "", status: "", flag: false, archived: false },
   mru: [],
   lastList: []            // what the console last printed, so `open 2` works
@@ -44,6 +45,58 @@ const $$ = (sel, scope) => Array.from((scope || document).querySelectorAll(sel))
 const on = (el, ev, fn) => { if (el) el.addEventListener(ev, fn); };
 const esc = s => String(s ?? "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/* ==========================================================================
+   Local cache
+
+   An Apps Script round trip costs about a second before it even opens the
+   sheet, so waiting for one to draw the first screen is a second of nothing.
+   The last known heads, inbox and lists are kept per account and painted
+   immediately; the real data lands a moment later and redraws only if it
+   differs.
+
+   localStorage, not cookies: cookies are capped near 4KB and are sent with
+   every request to Vercel, which has no idea what a head is. This never leaves
+   the device.
+   ========================================================================== */
+const CACHE_VERSION = 1;
+
+function cacheKey() { return S.user ? `cache.v${CACHE_VERSION}.${S.user.user_id}` : null; }
+function notesKey(headId) {
+  return S.user ? `notes.v${CACHE_VERSION}.${S.user.user_id}.${headId}` : null;
+}
+
+function saveCache() {
+  const key = cacheKey();
+  if (!key) return;
+  local(key, {
+    heads: S.heads, inbox: S.inbox, lists: S.lists,
+    needsDetail: S.needsDetail, at: Date.now()
+  });
+}
+
+/** Draws the last known state at once. Returns false if there is none. */
+function paintFromCache() {
+  const key = cacheKey();
+  const c = key && local(key);
+  if (!c || !Array.isArray(c.heads)) return false;
+
+  S.heads = c.heads;
+  S.inbox = c.inbox || [];
+  S.lists = c.lists || S.lists;
+  S.needsDetail = c.needsDetail || 0;
+
+  refreshLists();
+  refreshHeadPickers();
+  renderHeads();
+  renderInbox();
+  paintStats();
+
+  // The moment the user actually has something to look at. Readable in
+  // devtools as performance.getEntriesByName("documentrism:painted").
+  try { performance.mark("documentrism:painted"); } catch (e) {}
+  return true;
+}
 
 function local(key, val) {
   try {
@@ -280,13 +333,30 @@ async function enterApp(res) {
   applySkin();
   $("#gate").classList.add("hide");
   $("#shell").classList.remove("hide");
-  await reload();
-  sync("saved", "Ready");
+
+  // If this account has been used on this device before, the screen is up
+  // before the network is even asked.
+  if (paintFromCache()) {
+    sync("saving", "Checking for changes");
+    reload({ background: true });
+  } else {
+    await reload();
+    sync("saved", "Ready");
+  }
 }
 
 function signOut() {
+  // Signing out is deliberate, so the cached copy of this person's work goes
+  // with it. Someone else may be about to use this computer.
+  try {
+    const mine = `.v${CACHE_VERSION}.${S.user ? S.user.user_id : ""}`;
+    Object.keys(localStorage)
+      .filter(k => k.startsWith("documentrism.") && k.includes(mine))
+      .forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+
   API.signOut();
-  S.user = null; S.heads = []; S.inbox = []; S.current = null;
+  S.user = null; S.heads = []; S.inbox = []; S.current = null; S.lastSync = 0;
   $("#shell").classList.add("hide");
   $("#liId").value = ""; $("#liPw").value = "";
   showStep("stepLogin");
@@ -412,16 +482,36 @@ function renderHeads() {
 /* ==========================================================================
    Head page
    ========================================================================== */
-async function openHead(headId) {
-  show("head");
-  $("#crumbTitle").textContent = "loading…";
-  $("#hNotes").innerHTML = `<div class="skeleton"><i></i><i></i><i></i></div>`;
+async function openHead(headId, opts) {
+  opts = opts || {};
+  if (!opts.quiet) show("head");
   bumpMru(headId);
+
+  // The row is already in the heads list, and the notes may be cached from
+  // last time — so the page can be whole before the request is even sent.
+  const known = headRow(headId);
+  const cachedNotes = local(notesKey(headId));
+  if (known && !opts.quiet) {
+    S.current = { head: Object.assign({}, known), notes: cachedNotes || [] };
+    paintHead();
+    if (!cachedNotes) {
+      $("#hNotes").innerHTML = `<div class="skeleton"><i></i><i></i><i></i></div>`;
+    }
+  } else if (!opts.quiet) {
+    $("#crumbTitle").textContent = "loading…";
+    $("#hNotes").innerHTML = `<div class="skeleton"><i></i><i></i><i></i></div>`;
+  }
+
   try {
     const res = await API.call("getHead", { head_id: headId });
+    // Don't let a slow answer overwrite a head the user has since moved on from
+    if (S.current && S.current.head.head_id !== headId && opts.quiet) return;
     S.current = { head: res.head, notes: res.notes };
+    local(notesKey(headId), res.notes);
     paintHead();
   } catch (e) {
+    if (opts.quiet) return;                 // a quiet refresh keeps what is shown
+    if (known && cachedNotes) { toast("Showing the last copy — " + e.message, "bad"); return; }
     toast(e.message, "bad");
     show("heads");
   }
@@ -1092,7 +1182,7 @@ function wire() {
   });
 
   on($("#btnExport"), "click", exportAll);
-  on($("#btnRefresh"), "click", () => reload(true));
+  on($("#btnRefresh"), "click", () => reload({ loud: true }));
   on($("#btnSettings"), "click", () => openDialog("#stScrim"));
   on($("#btnSignOut"), "click", signOut);
   on($("#syncRetry"), "click", () => API.retry());
@@ -1129,7 +1219,13 @@ function wire() {
 /* ==========================================================================
    Load
    ========================================================================== */
-async function reload(loud) {
+/**
+ * opts.loud        show "Reading the sheet" (the Refresh button)
+ * opts.background  no spinner, no error toast — a quiet catch-up
+ */
+async function reload(opts) {
+  opts = opts || {};
+  const loud = opts.loud;
   if (loud) sync("saving", "Reading the sheet");
   try {
     const data = await API.call("bootstrap");
@@ -1152,14 +1248,53 @@ async function reload(loud) {
     renderHeads();
     renderInbox();
     paintStats();
+    saveCache();
+    S.lastSync = Date.now();
+
     if (loud) sync("saved", "Up to date");
-    if (S.current && S.view === "head") openHead(S.current.head.head_id);
+    else if (opts.background) sync("saved", "Up to date");
+
+    if (S.current && S.view === "head") openHead(S.current.head.head_id, { quiet: true });
   } catch (e) {
     if (e.code === "auth") { signOut(); return; }
+    // A quiet catch-up that fails leaves the cached screen alone and says so
+    // in the status pill. It must not wipe the page or throw a toast.
+    if (opts.background) { sync("failed", "Could not refresh"); return; }
     sync("failed", e.message);
     toast(e.message, "bad");
     $("#headsRows").innerHTML = emptyState("⚠", "Could not read the sheet", e.message);
   }
+}
+
+/* --------------------------------------------------------------------------
+   Keeping up to date without a page reload
+   -------------------------------------------------------------------------- */
+const STALE_AFTER = 45000;     // coming back to the tab
+const POLL_EVERY  = 90000;     // while the tab is in front
+
+/** Refuses to run while writes are in flight — it would clobber them. */
+function catchUp(force) {
+  if (!S.user || document.hidden) return;
+  if (API.pending() || API.state.stuck) return;
+  if (!force && Date.now() - (S.lastSync || 0) < STALE_AFTER) return;
+  reload({ background: true });
+}
+
+function wireAutoRefresh() {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) catchUp();
+  });
+  window.addEventListener("focus", () => catchUp());
+  setInterval(() => catchUp(true), POLL_EVERY);
+
+  // When the write queue finally empties, pull the authoritative copy back so
+  // server-side changes (updated_at, note ids) replace the optimistic ones.
+  let settle = null;
+  API.onChange(st => {
+    if (st.status !== "saved" || API.pending()) return;
+    clearTimeout(settle);
+    settle = setTimeout(() => catchUp(true), 1500);
+  });
 }
 
 async function boot() {
@@ -1171,6 +1306,7 @@ async function boot() {
   wireGate();
   wire();
   wireSettings();
+  wireAutoRefresh();
 
   const done = () => {
     $("#boot").classList.add("gone");

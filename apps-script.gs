@@ -93,6 +93,49 @@ function json(obj) {
 
 var PUBLIC_ACTIONS = { ping: 1, signup: 1, login: 1, resetPassword: 1 };
 
+/** Actions that change the sheet, and so must never run twice for one request. */
+var WRITE_ACTIONS = {
+  createHead: 1, createNote: 1, updateHead: 1, updateNote: 1, moveNote: 1,
+  archiveHead: 1, archiveNote: 1, addClient: 1, savePrefs: 1
+};
+
+var OP_TTL_SECONDS = 900;
+
+/**
+ * Runs a write exactly once, however many times the request arrives.
+ *
+ * A POST to /exec is answered with a redirect, and following it can replay the
+ * POST — which meant one "add note" wrote two rows. A client retry after a
+ * timeout could do the same, because a request that times out may still have
+ * succeeded. So every write carries an op_id: the first run stores its result
+ * under that id and any repeat gets the stored result back instead of writing
+ * again. The check and the write happen inside one lock, so two copies racing
+ * cannot both get past it.
+ */
+function runWrite_(opId, fn) {
+  return withLock_(function () {
+    var key = opId ? 'op:' + opId : null;
+    var cache = key ? CacheService.getScriptCache() : null;
+
+    if (key) {
+      var prior = cache.get(key);
+      if (prior) {
+        try {
+          var parsed = JSON.parse(prior);
+          parsed.replayed = true;      // so the client can tell, if it cares
+          return parsed;
+        } catch (e) { /* unreadable: fall through and do the work */ }
+      }
+    }
+
+    var res = fn();
+    if (key && res && res.ok) {
+      try { cache.put(key, JSON.stringify(res), OP_TTL_SECONDS); } catch (e) {}
+    }
+    return res;
+  });
+}
+
 function route(action, body) {
   try {
     if (!action) { return { ok: false, error: 'No action given.', code: 'bad_request' }; }
@@ -103,6 +146,21 @@ function route(action, body) {
       user = requireUser_(body.token);
     }
 
+    if (WRITE_ACTIONS[action]) {
+      return runWrite_(str_(body.op_id), function () { return dispatch_(action, body, user); });
+    }
+    return dispatch_(action, body, user);
+  } catch (err) {
+    return {
+      ok: false,
+      error: err && err.message ? err.message : 'Something went wrong.',
+      code: (err && err.code) || 'server'
+    };
+  }
+}
+
+function dispatch_(action, body, user) {
+  {
     switch (action) {
       /* --- open --- */
       case 'ping':          return { ok: true, app: APP, version: VERSION };
@@ -132,12 +190,6 @@ function route(action, body) {
       default:
         return { ok: false, error: 'Unknown action: ' + action, code: 'bad_request' };
     }
-  } catch (err) {
-    return {
-      ok: false,
-      error: err && err.message ? err.message : 'Something went wrong.',
-      code: (err && err.code) || 'server'
-    };
   }
 }
 
@@ -153,7 +205,20 @@ function fail_(message, code) {
 
 function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
 
+/**
+ * Read-through cache for the length of ONE request.
+ *
+ * Reading a tab is a round trip to the Sheets service — by far the most
+ * expensive thing this script does. Bootstrap used to read Notes three times
+ * and Users and Sessions once each on top; now every tab is read at most once
+ * per request. Any write invalidates its tab with dirty_(), so nothing here
+ * can hand back values that a write in the same request has already changed.
+ */
+var TABLE_CACHE_ = {};
+
 function table_(tabName) {
+  if (TABLE_CACHE_[tabName]) { return TABLE_CACHE_[tabName]; }
+
   var sh = ss_().getSheetByName(tabName);
   if (!sh) {
     fail_('The tab "' + tabName + '" is missing. Run Documentrism > Set up / repair tabs.', 'config');
@@ -162,8 +227,14 @@ function table_(tabName) {
   var headers = (values.shift() || []).map(function (h) { return String(h).trim(); });
   var idx = {};
   headers.forEach(function (h, i) { if (h) { idx[h] = i; } });
-  return { sh: sh, headers: headers, idx: idx, rows: values };
+
+  var t = { sh: sh, headers: headers, idx: idx, rows: values };
+  TABLE_CACHE_[tabName] = t;
+  return t;
 }
+
+/** Call straight after writing to a tab, so the next read sees the change. */
+function dirty_(tabName) { delete TABLE_CACHE_[tabName]; }
 
 function col_(t, name) {
   if (!(name in t.idx)) {
@@ -210,6 +281,13 @@ function patchRow_(t, rowNum, patch) {
   Object.keys(patch).forEach(function (k) {
     if (k in t.idx) { t.sh.getRange(rowNum, t.idx[k] + 1).setValue(patch[k]); }
   });
+  dirty_(t.sh.getName());
+}
+
+/** Appending goes through here so the cache is always invalidated with it. */
+function appendRow_(t, obj) {
+  t.sh.appendRow(rowFor_(t, obj));
+  dirty_(t.sh.getName());
 }
 
 function newId_(prefix) {
@@ -220,10 +298,18 @@ function newId_(prefix) {
 function yes_(v) { return String(v).trim().toLowerCase() === 'yes'; }
 function str_(v) { return String(v === null || v === undefined ? '' : v).trim(); }
 
+/** Reentrant: an inner withLock_ inside an outer one must not deadlock. */
+var LOCK_DEPTH_ = 0;
+
 function withLock_(fn) {
+  if (LOCK_DEPTH_ > 0) {
+    LOCK_DEPTH_++;
+    try { return fn(); } finally { LOCK_DEPTH_--; }
+  }
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
-  try { return fn(); } finally { lock.releaseLock(); }
+  LOCK_DEPTH_++;
+  try { return fn(); } finally { LOCK_DEPTH_--; lock.releaseLock(); }
 }
 
 /* ========================================================================== */
@@ -304,18 +390,49 @@ function newSession_(userId, agent) {
   var token = randomHex_(32);
   var now = new Date();
   var expires = new Date(now.getTime() + SESSION_DAYS * 86400000);
-  t.sh.appendRow(rowFor_(t, {
+  appendRow_(t, {
     token: token, user_id: userId, created_at: now,
     expires_at: expires, agent: str_(agent).slice(0, 120)
-  }));
+  });
   sweepSessions_();
   return token;
 }
+
+/**
+ * Resolving a token used to read the whole Sessions tab and the whole Users
+ * tab on EVERY request. Both are now cached for two minutes against the token.
+ *
+ * The trade: disabling an account, or deleting its session row by hand, takes
+ * up to two minutes to bite. Signing out clears the entry immediately, and a
+ * wrong or expired token is never cached, so this only ever shortcuts a
+ * session that was valid moments ago.
+ */
+var SESSION_TTL_SECONDS = 120;
 
 function requireUser_(token) {
   var t = str_(token);
   if (!t) { fail_('Please sign in.', 'auth'); }
 
+  var cache = CacheService.getScriptCache();
+  var key = 'u:' + t;
+  var hit = cache.get(key);
+  if (hit) {
+    try {
+      var cached = JSON.parse(hit);
+      if (cached && cached.user_id) { return cached; }
+    } catch (e) { /* fall through and resolve properly */ }
+  }
+
+  var user = resolveUser_(t);
+  try { cache.put(key, JSON.stringify(user), SESSION_TTL_SECONDS); } catch (e) {}
+  return user;
+}
+
+function forgetSession_(token) {
+  try { CacheService.getScriptCache().remove('u:' + str_(token)); } catch (e) {}
+}
+
+function resolveUser_(t) {
   var st = table_(TAB.SESSIONS);
   var tokCol = col_(st, 'token'), uidCol = col_(st, 'user_id'), expCol = col_(st, 'expires_at');
   var userId = null;
@@ -338,8 +455,18 @@ function requireUser_(token) {
   return user;
 }
 
-/** Keeps the Sessions tab from growing without limit. */
+/**
+ * Keeps the Sessions tab from growing without limit. Deleting rows one by one
+ * is slow, and it used to run on every single sign-in; once a day is plenty.
+ */
 function sweepSessions_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var last = Number(props.getProperty('sessions_swept') || 0);
+    if (Date.now() - last < 86400000) { return; }
+    props.setProperty('sessions_swept', String(Date.now()));
+  } catch (e) { return; }
+
   var t = table_(TAB.SESSIONS);
   var expCol = t.idx.expires_at;
   if (expCol === undefined) { return; }
@@ -347,7 +474,7 @@ function sweepSessions_() {
   for (var i = t.rows.length - 1; i >= 0; i--) {
     var exp = t.rows[i][expCol];
     var ms = exp instanceof Date ? exp.getTime() : Date.parse(exp);
-    if (ms && ms < cutoff) { t.sh.deleteRow(i + 2); }
+    if (ms && ms < cutoff) { t.sh.deleteRow(i + 2); dirty_(TAB.SESSIONS); }
   }
 }
 
@@ -389,7 +516,7 @@ function doSignup(body) {
       locked_until: '',
       status: 'Active'
     };
-    t.sh.appendRow(rowFor_(t, rec));
+    appendRow_(t, rec);
     var token = newSession_(rec.user_id, body.agent);
     return { ok: true, token: token, user: publicUser_(rec), prefs: defaultPrefs_() };
   });
@@ -485,9 +612,10 @@ function normDob_(v) {
 }
 
 function doLogout(token) {
+  forgetSession_(token);
   var t = table_(TAB.SESSIONS);
   var rowNum = findRow_(t, 'token', str_(token));
-  if (rowNum > 0) { t.sh.deleteRow(rowNum); }
+  if (rowNum > 0) { t.sh.deleteRow(rowNum); dirty_(TAB.SESSIONS); }
   return { ok: true };
 }
 
@@ -534,7 +662,7 @@ function doSavePrefs(user, prefs) {
       custom_css: css,
       updated_at: new Date()
     };
-    if (rowNum > 0) { patchRow_(t, rowNum, rec); } else { t.sh.appendRow(rowFor_(t, rec)); }
+    if (rowNum > 0) { patchRow_(t, rowNum, rec); } else { appendRow_(t, rec); }
     return { ok: true, prefs: { mode: rec.mode, theme: rec.theme, custom_css: css } };
   });
 }
@@ -650,13 +778,23 @@ function requireOwnNote_(user, noteId) {
   return { t: nt, rowNum: rowNum, row: row };
 }
 
+/**
+ * One pass over Notes, not three. Heads and Notes are each read once (the
+ * table cache sees to that), and inbox plus the needs-detail count come out of
+ * the same walk.
+ */
 function doBootstrap(user) {
   var heads = ownedHeads_(user, false);
-  var inbox = ownedNotes_(user, function (n) { return !n.head_id; });
+
+  var inbox = [], flagged = 0;
+  ownedNotes_(user, function (n) {
+    if (yes_(n.needs_detail)) { flagged++; }
+    if (!n.head_id) { inbox.push(n); }
+    return false;                       // collected above; nothing to return
+  });
   inbox.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
 
-  var needsDetail = heads.filter(function (h) { return yes_(h.needs_detail); }).length +
-                    ownedNotes_(user, function (n) { return yes_(n.needs_detail); }).length;
+  var needsDetail = heads.filter(function (h) { return yes_(h.needs_detail); }).length + flagged;
 
   return {
     ok: true,
@@ -708,7 +846,7 @@ function doCreateHead(user, data) {
       updated_at: now,
       archived: 'No'
     };
-    t.sh.appendRow(rowFor_(t, rec));
+    appendRow_(t, rec);
     if (rec.client) { ensureListValue_('clients', rec.client); }
     queueReport_();
     var out = clean_(rec, COLS.Heads);
@@ -758,7 +896,7 @@ function doCreateNote(user, data) {
       updated_at: now,
       archived: 'No'
     };
-    t.sh.appendRow(rowFor_(t, rec));
+    appendRow_(t, rec);
     if (headId) { touchHead_(headId, now); }
     queueReport_();
     return { ok: true, note: clean_(rec, COLS.Notes) };
@@ -794,6 +932,7 @@ function touchHead_(headId, when) {
   var rowNum = findRow_(t, 'head_id', headId);
   if (rowNum > 0) {
     t.sh.getRange(rowNum, col_(t, 'updated_at') + 1).setValue(when || new Date());
+    dirty_(TAB.HEADS);
   }
 }
 
@@ -867,6 +1006,7 @@ function ensureListValue_(listName, value) {
     if (v) { lastRow = i + 2; }
   }
   t.sh.getRange(lastRow + 1, c + 1).setValue(value);
+  dirty_(TAB.LISTS);
 }
 
 /* ========================================================================== */
