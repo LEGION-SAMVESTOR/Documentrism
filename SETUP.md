@@ -129,8 +129,8 @@ another and use that everywhere below.)
 # Part C — First sign-in
 
 1. Open your Vercel address.
-2. The first screen asks for the **Apps Script web app URL**. Paste the one you
-   copied in A5 and click **Connect**.
+2. You land straight on the sign-in screen — the backend URL is already in
+   `config.js`, so nobody has to paste anything.
 3. Click **Create an account** and fill in:
    - **Username** — 3 to 24 characters, letters and numbers
    - **Your name**
@@ -141,13 +141,25 @@ another and use that everywhere below.)
 
 ## Letting other people join
 
-Send them two things:
+Send them the web address, `https://documentrism.vercel.app`. That is all.
+They make their own account and see only their own work. They never touch your
+sheet.
 
-1. the web address, `https://documentrism.vercel.app`
-2. the Apps Script URL ending in `/exec`
+### Changing the backend later
 
-They paste the second one on the first screen, make their own account, and see
-only their own work. They never touch your sheet.
+The URL lives in one place: **`config.js`**. Deploy a new version in Apps
+Script, paste the new `/exec` URL into that file, and push. Vercel redeploys
+and everyone follows.
+
+`config.js` also has **`lockBackendUrl`**. Leave it `false` and the sign-in
+screen keeps a small *Change backend URL* link, so someone could point this
+same site at their own sheet instead. Set it to `true` to hide that link and
+pin everyone to yours.
+
+> The URL in `config.js` is visible to anyone who opens the site. That was
+> already true before — the browser has to send it, so it shows in the network
+> tab either way. What it means in practice is that **anyone who finds the web
+> address can create an account in your sheet.** See *Safety* below.
 
 ---
 
@@ -264,10 +276,17 @@ better way:
 > person or on a channel you trust. They put it on the **Forgot password**
 > screen. It works once.
 
-**Anyone with the Apps Script URL can create an account.** Treat it like a
-door key, not a public link. If it gets out: in the script editor, **Deploy** →
-**Manage deployments** → **Archive** the old deployment and make a new one. The
-old URL stops working and everyone pastes the new one.
+**Anyone who opens the web address can create an account**, because the backend
+URL ships in `config.js` and sign-up is open. For a small team you trust with
+the address, that is fine. If strangers start signing up, you have two moves:
+
+1. **Rotate the backend.** Script editor → **Deploy** → **Manage deployments**
+   → **Archive** the old one, deploy a new one, put the new `/exec` URL in
+   `config.js` and push. The old address stops working.
+2. **Ask for a sign-up key** — a short shared secret the server checks before
+   it creates an account. This is the real fix, and it is not built yet.
+
+Either way, existing accounts and all the work stay where they are.
 
 **Accounts are locked for 15 minutes after 8 wrong passwords**, so guessing is
 slow.

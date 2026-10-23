@@ -26,13 +26,19 @@ Apps Script web app  (deployed "Anyone", runs as the sheet's owner)
 one Google Sheet — Users · Sessions · Prefs · Heads · Notes · Lists · Report
 ```
 
-The backend URL is **not** baked into the front end. Each person pastes their
-deployment URL on first run and it lives in that device's `localStorage`. That
-is what lets the site be public while the data stays private to one sheet.
+The backend URL lives in **`config.js`**, which ships to the browser, so people
+land straight on sign-in. A URL someone pastes by hand is kept in their
+`localStorage` and always wins over the shipped one, unless `lockBackendUrl` is
+set. With neither, the app asks for a URL on first run.
+
+This means anyone who opens the site can sign up. The URL was never really
+secret — the browser sends it on every call — so the honest control is a
+sign-up key, which is **not built**. Until then, the address is the gate.
 
 | File | What it is |
 | --- | --- |
 | `apps-script.gs` | The entire backend. Pasted into Apps Script by hand. |
+| `config.js` | The backend URL. The only file to edit when the backend moves. |
 | `index.html` | Gate screens, app shell, dialogs. |
 | `styles.css` | Design system and all three modes. |
 | `api.js` | The only thing that talks to the backend. Transport, session, write queue. |
