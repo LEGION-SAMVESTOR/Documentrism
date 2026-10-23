@@ -6,6 +6,9 @@
    straight to the sign-in screen. It is the only file you edit when the
    backend moves.
 
+   This is the ONLY place the backend address lives. There is no screen in the
+   app for changing it — everyone who opens the site uses the URL below.
+
    WHAT THIS MEANS — read once
    This file ships to the browser, so the URL in it is public to anyone who
    opens the site. The deployment must be set to "Anyone" for sign-up to work
@@ -15,20 +18,11 @@
 
    If that becomes a problem, the fix is a sign-up key, not hiding this URL.
 
-   To move the backend: deploy a new version, paste the new /exec URL below,
-   and push. Anyone who had pasted the old one by hand keeps using it until
-   they clear it with "Change backend URL" on the sign-in screen.
+   To move the backend: deploy a new version in Apps Script, paste the new
+   /exec URL below, and push. Vercel redeploys and everyone follows at once.
    ========================================================================== */
 window.DOCUMENTRISM_CONFIG = {
 
   /** The Apps Script web app URL. Must be the /exec one, not /dev. */
-  backendUrl: "https://script.google.com/macros/s/AKfycbwPCsP5SqRq_duJO43a4eaodLcU8hb2BDsn9QvAZxMCivBLfr9p71ELcQBKJBDUFRS2Aw/exec",
-
-  /**
-   * true  — everyone uses the URL above and the "Change backend URL" link is
-   *         hidden. Right for one shared sheet.
-   * false — the link stays, so someone can point this same site at their own
-   *         backend instead. Their choice is kept on their device only.
-   */
-  lockBackendUrl: false
+  backendUrl: "https://script.google.com/macros/s/AKfycbwPCsP5SqRq_duJO43a4eaodLcU8hb2BDsn9QvAZxMCivBLfr9p71ELcQBKJBDUFRS2Aw/exec"
 };

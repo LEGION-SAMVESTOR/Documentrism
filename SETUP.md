@@ -149,12 +149,10 @@ sheet.
 
 The URL lives in one place: **`config.js`**. Deploy a new version in Apps
 Script, paste the new `/exec` URL into that file, and push. Vercel redeploys
-and everyone follows.
+and everyone follows at once.
 
-`config.js` also has **`lockBackendUrl`**. Leave it `false` and the sign-in
-screen keeps a small *Change backend URL* link, so someone could point this
-same site at their own sheet instead. Set it to `true` to hide that link and
-pin everyone to yours.
+There is no screen in the app for changing it. Everyone who opens the site
+uses the URL in that file, and that is the only way to change it.
 
 > The URL in `config.js` is visible to anyone who opens the site. That was
 > already true before — the browser has to send it, so it shows in the network

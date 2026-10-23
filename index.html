@@ -28,30 +28,7 @@
      ====================================================================== -->
 <div class="gate hide" id="gate">
 
-  <!-- 1. backend URL ------------------------------------------------- -->
-  <div class="gate-card gate-step" id="stepUrl">
-    <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
-    <p class="lede">
-      First, connect this app to your sheet. Paste the Apps Script web app URL
-      you got when you deployed the backend.
-    </p>
-    <div class="field">
-      <label for="urlIn">Apps Script web app URL</label>
-      <input class="inp" id="urlIn" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" spellcheck="false">
-    </div>
-    <div class="err" id="urlErr"></div>
-    <div class="note-box">
-      It must end in <b>/exec</b>, not <b>/dev</b>, and the deployment's
-      <b>Who has access</b> must be <b>Anyone</b> — otherwise the page cannot
-      reach it. The URL is stored on this device only.
-    </div>
-    <div class="gate-foot">
-      <div class="spacer"></div>
-      <button class="btn pri" id="urlSave">Connect</button>
-    </div>
-  </div>
-
-  <!-- 2. sign in ----------------------------------------------------- -->
+  <!-- 1. sign in ----------------------------------------------------- -->
   <div class="gate-card gate-step" id="stepLogin">
     <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
     <p class="lede">Sign in to your work log.</p>
@@ -71,12 +48,10 @@
       <div class="spacer"></div>
       <button class="btn pri" id="liGo">Sign in</button>
     </div>
-    <div class="gate-foot" style="border:none;padding-top:4px;margin-top:4px">
-      <button class="linkish faint" id="changeUrl" style="font-size:10.5px">Change backend URL</button>
-    </div>
+    <div class="err" id="cfgErr" style="margin-top:14px"></div>
   </div>
 
-  <!-- 3. sign up ----------------------------------------------------- -->
+  <!-- 2. sign up ----------------------------------------------------- -->
   <div class="gate-card wide gate-step" id="stepSignup">
     <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
     <p class="lede">Create an account. Your notes are yours — nobody else signed in here sees them.</p>
@@ -115,7 +90,7 @@
     </div>
   </div>
 
-  <!-- 4. reset ------------------------------------------------------- -->
+  <!-- 3. reset ------------------------------------------------------- -->
   <div class="gate-card wide gate-step" id="stepReset">
     <div class="wordmark">DOCUMENT<i>R</i>ISM</div>
     <p class="lede">Set a new password using your date of birth, or a reset code from the sheet's owner.</p>

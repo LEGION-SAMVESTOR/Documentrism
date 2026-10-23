@@ -26,10 +26,10 @@ Apps Script web app  (deployed "Anyone", runs as the sheet's owner)
 one Google Sheet — Users · Sessions · Prefs · Heads · Notes · Lists · Report
 ```
 
-The backend URL lives in **`config.js`**, which ships to the browser, so people
-land straight on sign-in. A URL someone pastes by hand is kept in their
-`localStorage` and always wins over the shipped one, unless `lockBackendUrl` is
-set. With neither, the app asks for a URL on first run.
+The backend URL lives in **`config.js`** and nowhere else. It ships to the
+browser, so people land straight on sign-in, and there is no in-app way to
+point this site at a different backend. Ship `config.js` without a
+`backendUrl` and the sign-in screen says so plainly instead of failing oddly.
 
 This means anyone who opens the site can sign up. The URL was never really
 secret — the browser sends it on every call — so the honest control is a

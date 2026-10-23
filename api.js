@@ -12,7 +12,6 @@
    nothing is ever dropped silently.
    ========================================================================== */
 const API = (function () {
-  const K_URL   = "documentrism.api.url";
   const K_TOKEN = "documentrism.api.token";
   const K_USER  = "documentrism.api.user";
 
@@ -33,15 +32,10 @@ const API = (function () {
     } catch (e) { /* private window or blocked storage */ }
   }
 
-  // config.js may carry a default backend URL so nobody has to paste one. A
-  // URL this person pasted themselves always wins over the shipped default.
+  // The backend address comes from config.js and nowhere else. There is no way
+  // to point this site at a different backend from inside the app.
   const CONFIG = (typeof window !== "undefined" && window.DOCUMENTRISM_CONFIG) || {};
-  const shippedUrl = () => String(CONFIG.backendUrl || "").trim();
-  const urlIsLocked = () => !!CONFIG.lockBackendUrl && !!shippedUrl();
-
-  const url     = () => (urlIsLocked() ? shippedUrl() : (read(K_URL, "") || shippedUrl()));
-  const setUrl  = u => write(K_URL, String(u || "").trim());
-  const clearUrl = () => write(K_URL, null);
+  const url = () => String(CONFIG.backendUrl || "").trim();
   const token   = () => read(K_TOKEN, "") || "";
   const setToken= t => write(K_TOKEN, t || null);
   const user    = () => read(K_USER, null);
@@ -56,9 +50,11 @@ const API = (function () {
   /* ---------- the one network primitive ----------
      No custom headers. That keeps it a "simple" request, so the browser never
      sends a preflight OPTIONS — which Apps Script cannot answer. */
-  async function call(action, payload, opts) {
-    const endpoint = (opts && opts.url) || url();
-    if (!endpoint) { throw tagged("No backend URL set yet.", "config"); }
+  async function call(action, payload) {
+    const endpoint = url();
+    if (!endpoint) {
+      throw tagged("This site has no backend address in config.js.", "config");
+    }
 
     const body = Object.assign({ action }, payload || {});
     if (body.token === undefined && token()) { body.token = token(); }
@@ -95,24 +91,6 @@ const API = (function () {
       throw err;
     }
     return data;
-  }
-
-  /** Checks a pasted URL really is a Documentrism backend before saving it. */
-  async function verifyUrl(candidate) {
-    const clean = String(candidate || "").trim();
-    if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(clean)) {
-      throw tagged(
-        "That does not look like a deployment URL. It should start with " +
-        "https://script.google.com/macros/s/ and end with /exec",
-        "config"
-      );
-    }
-    const res = await call("ping", {}, { url: clean });
-    if (res.app !== "documentrism") {
-      throw tagged("That URL answered, but it is not a Documentrism backend.", "config");
-    }
-    setUrl(clean);
-    return res;
   }
 
   /* ---------- session ---------- */
@@ -191,7 +169,7 @@ const API = (function () {
 
   return {
     call, enqueue, retry, onChange, state,
-    url, setUrl, clearUrl, verifyUrl, urlIsLocked,
+    url,
     token, user, signup, login, resetPassword, signOut,
     pending: () => queue.length,
     configured: () => !!url(),

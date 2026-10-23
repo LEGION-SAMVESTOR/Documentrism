@@ -188,33 +188,10 @@ function showStep(id) {
 
 function wireGate() {
   $$("[data-step]").forEach(b => on(b, "click", () => {
-    ["#liErr", "#suErr", "#rsErr", "#urlErr"].forEach(clearErr);
+    ["#liErr", "#suErr", "#rsErr"].forEach(clearErr);
     $("#rsOk").classList.remove("on");
     showStep(b.dataset.step);
   }));
-
-  // Hidden when config.js locks everyone to one backend.
-  if (API.urlIsLocked()) $("#changeUrl").closest(".gate-foot").classList.add("hide");
-  on($("#changeUrl"), "click", () => { $("#urlIn").value = API.url(); showStep("stepUrl"); });
-
-  /* backend URL */
-  on($("#urlSave"), "click", async () => {
-    clearErr("#urlErr");
-    const btn = $("#urlSave");
-    btn.disabled = true;
-    btn.textContent = "Checking…";
-    try {
-      await API.verifyUrl($("#urlIn").value);
-      showStep("stepLogin");
-      toast("Backend connected.", "good");
-    } catch (e) {
-      showErr("#urlErr", e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Connect";
-    }
-  });
-  on($("#urlIn"), "keydown", e => { if (e.key === "Enter") $("#urlSave").click(); });
 
   /* sign in */
   on($("#liGo"), "click", async () => {
@@ -1200,8 +1177,17 @@ async function boot() {
     setTimeout(() => $("#boot").remove(), 400);
   };
 
-  if (!API.configured()) { showStep("stepUrl"); done(); return; }
-  if (!API.signedIn())  { showStep("stepLogin"); done(); return; }
+  // Only ever true if config.js was shipped without a backendUrl — which is a
+  // deployment mistake, not something a visitor can fix, so say exactly that.
+  if (!API.configured()) {
+    showStep("stepLogin");
+    $("#liGo").disabled = true;
+    showErr("#cfgErr", "This site is not connected to a backend. " +
+                       "Whoever deployed it needs to put the Apps Script /exec URL in config.js.");
+    done();
+    return;
+  }
+  if (!API.signedIn()) { showStep("stepLogin"); done(); return; }
 
   $("#bootMsg").textContent = "Reading the sheet";
   try {
