@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "documentrism",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-s", "-l", "4822", "."],
+      "port": 4822
+    }
+  ]
+}

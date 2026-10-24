@@ -238,6 +238,36 @@ fields into plain reading surfaces — still selectable, so the text can be
 copied. The expand button stays, because hiding it was the difference between
 "shared" and "shared but unreadable".
 
+## Addresses
+
+Every screen has its own URL, so a head can be bookmarked, opened in a second
+tab, or sent to someone who has access to it.
+
+```
+/                                          the heads list
+/inbox            /shared
+/h/aujjessa-pdp-rebuild-H-MVKSAXE1-6CED5
+/n/N-MVKT5MPA-2148F
+```
+
+The slug exists to make the link readable; **the id on the end is what
+resolves it**, matched by shape rather than by position. So renaming a head
+never breaks a link anyone already holds — the stale slug still lands on the
+right page, and the address is rewritten once the real title is known
+(`replaceState`, so Back still goes where the user came from).
+
+Three things this needed:
+
+- **Asset paths are root-absolute.** Under `/h/…` a relative `styles.css`
+  would resolve to `/h/styles.css` and 404.
+- **`vercel.json` rewrites** anything without a file extension to
+  `/index.html`, or a reload on `/h/…` is a 404.
+- **The local preview runs `serve -s`** for the same reason; without it, every
+  deep link 404s in development only, which is a confusing way to find out.
+
+Background refreshes reopen the current head with `{quiet: true}` and never
+touch history; `popstate` drives Back and Forward.
+
 ## Confirming destructive actions
 
 Archiving, removing an image and revoking a share all ask first, through one

@@ -1448,13 +1448,34 @@ function doGetNote(user, noteId) {
     byId[id] = clean_(toObj_(nt, r, COLS.Notes), COLS.Notes);
   });
 
+  /* Head titles come with the linked notes: a link that only shows the line
+     tells you nothing about where that work lives, which is half the reason
+     for linking in the first place. */
+  var ht2 = table_(TAB.HEADS);
+  var h2Id = col_(ht2, 'head_id'), h2Title = col_(ht2, 'title');
+  var titleOf = {};
+  ht2.rows.forEach(function (r) {
+    var id = str_(r[h2Id]);
+    if (id) { titleOf[id] = str_(r[h2Title]); }
+  });
+
   var linked = linkIdsOf_(note)
     .map(function (id) { return byId[id]; })
-    .filter(function (n) { return n && str_(n.owner_id) === ownerId; });
+    .filter(function (n) { return n && str_(n.owner_id) === ownerId; })
+    .map(function (n) {
+      n = JSON.parse(JSON.stringify(n));
+      n.head_title = n.head_id ? (titleOf[n.head_id] || '') : '';
+      return n;
+    });
 
   var kids = [];
   Object.keys(byId).forEach(function (id) {
     if (str_(byId[id].parent_note_id) === noteId) { kids.push(byId[id]); }
+  });
+  kids = kids.map(function (n) {
+    n = JSON.parse(JSON.stringify(n));
+    n.head_title = n.head_id ? (titleOf[n.head_id] || '') : '';
+    return n;
   });
   kids.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });
 

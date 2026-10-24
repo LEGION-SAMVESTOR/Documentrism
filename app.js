@@ -398,6 +398,9 @@ async function enterApp(res) {
     await reload();
     sync("saved", "Ready");
   }
+
+  // Whatever address they arrived at is what they asked for.
+  ROUTE.apply();
 }
 
 function signOut() {
@@ -747,7 +750,11 @@ function renderHeads() {
    ========================================================================== */
 async function openHead(headId, opts) {
   opts = opts || {};
-  if (!opts.quiet) show("head");
+  if (!opts.quiet) {
+    show("head", { fromUrl: true });          // the address is set below, once
+    const known = headRow(headId);
+    if (!opts.fromUrl) ROUTE.set("head", headId, known ? known.title : "");
+  }
   bumpMru(headId);
 
   // The row is already in the heads list, and the notes may be cached from
@@ -776,6 +783,9 @@ async function openHead(headId, opts) {
     if (S.current && S.current.head.head_id !== headId && opts.quiet) return;
     S.current = { head: res.head, notes: res.notes, children: res.children || [] };
     S.readonly = !!res.readonly;
+    // Now the title is known, put a readable slug on the address — replacing
+    // rather than pushing, so Back still goes where the user came from.
+    if (!opts.quiet) ROUTE.set("head", res.head.head_id, res.head.title, true);
     S.currentOwner = res.owner || null;
     if (!S.readonly) local(notesKey(headId), res.notes);   // never cache someone else's
     paintHead();
@@ -1023,7 +1033,11 @@ function noteHtml(n, depth) {
   if (n._failed) chips.push(`<span class="chip" style="color:var(--red)">not saved</span>`);
 
   const links = String(n.links || "").split(",").filter(Boolean).length;
-  if (links) chips.push(`<span class="chip">${links} linked</span>`);
+  if (links) {
+    // Reachable from the timeline, not only from the note's own page.
+    chips.push(`<button class="chip linkjump" data-open-links="${esc(n.note_id)}"
+      title="Open this note to see what it links to">⧉ ${links} linked</button>`);
+  }
 
   return `
   <div class="note${state}${depth ? " note-kid" : ""}" data-note="${esc(n.note_id)}"
@@ -1217,6 +1231,10 @@ function wireNotes(scope) {
     } else {
       $$("[data-f]", el).forEach(f => on(f, "input", () => markEditing("note:" + id, true)));
     }
+    $$("[data-open-links]", el).forEach(b => on(b, "click", ev => {
+      ev.stopPropagation();
+      openNote(b.dataset.openLinks);
+    }));
 
     $$(".shot .kill", el).forEach(k => on(k, "click", ev => {
       ev.stopPropagation();
@@ -1441,8 +1459,10 @@ function addNoteOptimistic(text, headId, type, shots) {
 
    A long note deserves a page, not a two-row textarea inside a list.
    ========================================================================== */
-async function openNote(noteId) {
-  show("note");
+async function openNote(noteId, opts) {
+  opts = opts || {};
+  show("note", { fromUrl: true });
+  if (!opts.fromUrl) ROUTE.set("note", noteId);
   $("#nvText").value = "";
   $("#nvDetails").value = "";
   $("#nvLinks").innerHTML = `<div class="emptyline">Loading…</div>`;
@@ -1532,10 +1552,10 @@ function renderLinkList(sel, rows, fromId, cuttable) {
     return;
   }
   box.innerHTML = rows.map(n => `
-    <button class="linkrow" data-go="${esc(n.note_id)}">
+    <button class="linkrow" data-go="${esc(n.note_id)}" title="Open this note">
       ${cuttable && !S.readonly ? `<span class="cut" data-cut="${esc(n.note_id)}" title="Remove this link">✕</span>` : ""}
       <div class="t">${esc(n.text)}</div>
-      <div class="m">${esc(dateOf(n.created_at))}</div>
+      <div class="m">↳ ${esc(n.head_title || "Inbox")} · ${esc(dateOf(n.created_at))}</div>
     </button>`).join("");
 
   $$("[data-go]", box).forEach(el => on(el, "click", ev => {
@@ -2294,10 +2314,82 @@ async function runCommand(raw) {
 }
 
 /* ==========================================================================
+   Routing
+
+   Every screen has its own address, so a head can be bookmarked, opened in a
+   second tab, or sent to someone who has access to it. The slug is there to
+   make the link readable; the id on the end is what actually resolves it, so
+   renaming a head never breaks a link anyone already has.
+
+       /                     the heads list
+       /inbox                /shared
+       /h/aujjessa-pdp-rebuild-H-MVKSAXE1-6CED5
+       /n/N-MVKT5MPA-2148F
+   ========================================================================== */
+const ROUTE = {
+  slug(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60);
+  },
+
+  /** The address for a thing, or for a plain view. */
+  pathFor(view, id, title) {
+    if (view === "head" && id) {
+      const s = ROUTE.slug(title);
+      return "/h/" + (s ? s + "-" : "") + id;
+    }
+    if (view === "note" && id) return "/n/" + id;
+    if (view === "inbox") return "/inbox";
+    if (view === "shared") return "/shared";
+    return "/";
+  },
+
+  /** What an address means. Ids are matched by shape, not by position. */
+  parse(pathname) {
+    const p = String(pathname || "/").replace(/\/+$/, "") || "/";
+    if (p === "/" || p === "") return { view: "heads" };
+    if (p === "/inbox") return { view: "inbox" };
+    if (p === "/shared") return { view: "shared" };
+
+    const head = p.match(/^\/h\/.*?(H-[A-Z0-9]+-[A-Z0-9]+)$/i);
+    if (head) return { view: "head", id: head[1].toUpperCase() };
+
+    const note = p.match(/^\/n\/.*?(N-[A-Z0-9]+-[A-Z0-9]+)$/i);
+    if (note) return { view: "note", id: note[1].toUpperCase() };
+
+    return { view: "heads", unknown: true };
+  },
+
+  /** Writes the address without reloading. Never pushes the same one twice. */
+  set(view, id, title, replace) {
+    const path = ROUTE.pathFor(view, id, title);
+    if (path === location.pathname && !replace) return;
+    try {
+      history[replace ? "replaceState" : "pushState"]({ view, id }, "", path);
+    } catch (e) { /* file:// and the like have no history to write */ }
+  },
+
+  /** Acts on whatever the address currently says. */
+  apply() {
+    const r = ROUTE.parse(location.pathname);
+    if (r.view === "head" && r.id) { openHead(r.id, { fromUrl: true }); return; }
+    if (r.view === "note" && r.id) { openNote(r.id, { fromUrl: true }); return; }
+    show(r.view, { fromUrl: true });
+  }
+};
+
+/* ==========================================================================
    Views and dialogs
    ========================================================================== */
-function show(view) {
+function show(view, opts) {
+  opts = opts || {};
   S.view = view;
+  // Coming from the address bar, the address is already right; writing it
+  // again would add a second entry for the same place.
+  if (!opts.fromUrl && S.user) ROUTE.set(view);
   $$(".view").forEach(v => v.classList.toggle("on", v.id === "view-" + view));
 
   applySplit();
@@ -2694,6 +2786,9 @@ function wire() {
     e.target.value = "";
     runCommand(v);
   });
+
+  /* the browser's own Back and Forward */
+  on(window, "popstate", () => { if (S.user) ROUTE.apply(); });
 
   on(document, "keydown", e => {
     const mod = e.ctrlKey || e.metaKey;

@@ -287,7 +287,23 @@ it back out. You cannot drop a note onto one of its own replies.
 
 **Links.** On a note's page, press **+ Link** and search for another note.
 Linking works **both ways** — it shows on the other note too, so you can find
-your way back.
+your way back. Each linked note shows **which head it lives in**, and clicking
+it opens that note. In the timeline, a note with links shows a ⧉ chip you can
+click to jump straight to them.
+
+## Every page has its own address
+
+A head or a note has a real link you can bookmark or send to someone who has
+access to it:
+
+```
+documentrism.vercel.app/h/aujjessa-pdp-rebuild-H-MVKSAXE1-6CED5
+documentrism.vercel.app/n/N-MVKT5MPA-2148F
+```
+
+The readable part is only there to help you recognise it — the code at the end
+is what finds the page. **Renaming a head does not break links** anyone
+already has. Back and Forward in your browser work normally.
 
 ## Pictures in notes
 
