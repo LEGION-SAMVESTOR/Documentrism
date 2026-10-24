@@ -33,6 +33,7 @@ const S = {
   shares: { incoming: [], outgoing: [] },
   sharedPerson: null,      // whose shared items are open, if any
   note: null,              // the note open on its own page, if any
+  lastLayout: undefined,   // so a layout change can redraw what it must
   readonly: false,         // the head or note on screen belongs to someone else
   lists: { clients: [], types: [], statuses: [] },
   heads: [],
@@ -207,6 +208,14 @@ function applySkin() {
   if (t) t.textContent = S.prefs.theme === "dark" ? "Dark" : "Light";
   $$("[data-mode-pick]").forEach(b => b.classList.toggle("on", b.dataset.modePick === S.prefs.mode));
   set("#stLayout", S.prefs.layout);
+  applySplit();          // the split arrangement depends on the layout too
+
+  // Board builds different markup, so changing to or from it has to redraw
+  // the list — a stylesheet cannot group rows into columns by itself.
+  if (S.user && S.lastLayout !== undefined && S.lastLayout !== S.prefs.layout) {
+    renderHeads();
+  }
+  S.lastLayout = S.prefs.layout;
   set("#stStyle", S.prefs.style);
   set("#stAccent", S.prefs.accent);
   set("#stFont", S.prefs.font);
@@ -651,6 +660,46 @@ function highlight(text, words) {
   return out;
 }
 
+/** One column per status, in the order the Lists tab gives them. */
+function renderBoard(box, rows) {
+  const statuses = S.lists.statuses.length ? S.lists.statuses : ["Active", "Paused", "Done"];
+  const buckets = new Map(statuses.map(s => [s, []]));
+  const loose = [];
+  rows.forEach(h => {
+    if (buckets.has(h.status)) buckets.get(h.status).push(h);
+    else loose.push(h);
+  });
+  if (loose.length) buckets.set("No status", loose);
+
+  box.innerHTML = [...buckets.entries()].map(([status, list]) => `
+    <div class="board-col">
+      <div class="hd">${esc(status)}<span class="n">${list.length}</span></div>
+      ${list.length
+        ? list.map(h => headRowHtml(h, kidCount(h.head_id))).join("")
+        : `<div class="emptyline">Nothing here.</div>`}
+    </div>`).join("");
+
+  $$("#headsRows .trow").forEach(el => on(el, "click", () => openHead(el.dataset.head)));
+}
+
+/** The markup for one head row, shared by the table and the board. */
+function headRowHtml(h, kids) {
+  return `
+    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}">
+      <div>
+        <div class="title">${esc(h.title)}${kids ? `<span class="kids">${kids} sub</span>` : ""}</div>
+        <div class="sub">${h.link ? "↗ link · " : ""}created ${esc(dateOf(h.created_at))}${
+          h.needs_detail === "Yes" ? " · needs detail" : ""}${
+          h.archived === "Yes" ? " · archived" : ""}</div>
+      </div>
+      <div>${h.client ? `<span class="chip client">${esc(h.client)}</span>` : `<span class="faint">—</span>`}</div>
+      <div class="c-type">${h.type ? `<span class="chip">${esc(h.type)}</span>` : `<span class="faint">—</span>`}</div>
+      <div>${statusChip(h.status)}</div>
+      <div class="r num c-notes">${h.note_count}</div>
+      <div class="r c-when">${esc(ago(h.updated_at || h.created_at))}</div>
+    </button>`;
+}
+
 function emptyState(mark, title, body, action) {
   return `<div class="empty"><div class="mark">${mark}</div><h3>${esc(title)}</h3>
           <p>${esc(body)}</p>${action || ""}</div>`;
@@ -681,24 +730,14 @@ function renderHeads() {
     return;
   }
 
-  box.innerHTML = rows.map(h => {
-    const kids = kidCount(h.head_id);
-    return `
-    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}">
-      <div>
-        <div class="title">${esc(h.title)}${
-          kids ? `<span class="kids">${kids} sub</span>` : ""}</div>
-        <div class="sub">${h.link ? "↗ link · " : ""}created ${esc(dateOf(h.created_at))}${
-          h.needs_detail === "Yes" ? " · needs detail" : ""}${
-          h.archived === "Yes" ? " · archived" : ""}</div>
-      </div>
-      <div>${h.client ? `<span class="chip client">${esc(h.client)}</span>` : `<span class="faint">—</span>`}</div>
-      <div class="c-type">${h.type ? `<span class="chip">${esc(h.type)}</span>` : `<span class="faint">—</span>`}</div>
-      <div>${statusChip(h.status)}</div>
-      <div class="r num c-notes">${h.note_count}</div>
-      <div class="r c-when">${esc(ago(h.updated_at || h.created_at))}</div>
-    </button>`;
-  }).join("");
+  // The board layout is the one arrangement the stylesheet cannot make on its
+  // own: the rows have to be grouped into a list per status first.
+  if (S.prefs.layout === "board") {
+    renderBoard(box, rows);
+    return;
+  }
+
+  box.innerHTML = rows.map(h => headRowHtml(h, kidCount(h.head_id))).join("");
 
   $$("#headsRows .trow").forEach(el => on(el, "click", () => openHead(el.dataset.head)));
 }
@@ -2239,6 +2278,9 @@ async function runCommand(raw) {
 function show(view) {
   S.view = view;
   $$(".view").forEach(v => v.classList.toggle("on", v.id === "view-" + view));
+
+  applySplit();
+
   $$(".nav-item[data-nav]").forEach(b => b.classList.toggle("on", b.dataset.nav === view));
   document.body.classList.remove("rail-open");
   $("#surface").scrollTop = 0;
@@ -2284,6 +2326,20 @@ function settleConfirm(answer) {
   const r = confirmResolve;
   confirmResolve = null;
   if (r) r(answer);
+}
+
+/**
+ * In the split layout the heads list stays beside an open head instead of
+ * being replaced by it, so you keep your place while reading one. Below
+ * 1000px there is no room for two columns and it behaves like classic.
+ */
+function applySplit() {
+  const inner = $(".inner");
+  if (!inner) return;
+  const on = S.prefs.layout === "split" && S.view === "head" && window.innerWidth >= 900;
+  inner.classList.toggle("split-on", on);
+  if (on) $("#view-heads").classList.add("on");
+  else if (S.view !== "heads") $("#view-heads").classList.remove("on");
 }
 
 function openDialog(sel, focusSel) {

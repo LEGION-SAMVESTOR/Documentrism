@@ -445,29 +445,29 @@
 /* ==========================================================================
    1b-2. LAYOUT
 
-   Structure only. A layout never sets a colour and a theme never moves
-   anything — pick them separately and any of the ten works with any theme.
+   Ten arrangements, not ten paddings. Each one moves the actual regions of
+   the page — where navigation lives, whether the list and the detail share
+   the screen, whether rows are a table, tiles or columns. Spacing differences
+   alone made them all look like one design at different zoom levels.
 
-   Every layout is built from the same four levers, so they compose cleanly:
-     --inner-max   how wide the reading column is
-     --row-pad     how tall a row is
-     --pad         how much air around the surface
-     --rail-w      the sidebar, or 0 when it moves to the top
-   Anything beyond that is a named structural change, commented where it is.
+   Every layout uses the full width. None of them narrows the work area.
+
+   Written html[data-layout="…"] so a layout always beats a theme on
+   specificity: structure is the layout's business, colour is the theme's.
    ========================================================================== */
-:root{--inner-max:1180px;--row-pad:13px}
+:root{--inner-max:100%;--row-pad:13px}
+.inner{max-width:var(--inner-max)}
 
-/* --- 1. classic: left rail, command bar, table. The default -------------- */
-html[data-layout="classic"]{--inner-max:1180px;--row-pad:13px;--pad:28px}
+/* --- 1. classic: rail left, command bar, table -------------------------- */
+html[data-layout="classic"]{--row-pad:13px;--pad:28px}
 
-/* --- 2. topbar: navigation across the top, content centred -------------- */
+/* --- 2. topbar: no side rail at all; navigation runs across the top ----- */
 @media (min-width:901px){
-  html[data-layout="topbar"]{--inner-max:1060px;--row-pad:14px;--pad:28px;
-    --edge:max(var(--pad), calc((100vw - var(--inner-max)) / 2));}
+  html[data-layout="topbar"]{--row-pad:14px;--pad:30px}
   html[data-layout="topbar"] .shell{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   html[data-layout="topbar"] .rail{
     flex-direction:row;align-items:center;gap:16px;height:58px;
-    border-right:none;border-bottom:1px solid var(--line);padding:0 var(--edge);
+    border-right:none;border-bottom:1px solid var(--line);padding:0 var(--pad);
   }
   html[data-layout="topbar"] .rail-head{border:none;padding:0;flex:0 0 auto}
   html[data-layout="topbar"] .rail-head .who{display:none}
@@ -487,123 +487,131 @@ html[data-layout="classic"]{--inner-max:1180px;--row-pad:13px;--pad:28px}
   html[data-layout="topbar"] .rail-foot .btn span{display:none}
   html[data-layout="topbar"] .rail-foot .btn{padding:7px 11px;font-size:13px}
   html[data-layout="topbar"] #qaOpen{width:auto;padding:8px 16px}
-  html[data-layout="topbar"] .cmdbar{height:54px;flex-basis:54px;padding:0 var(--edge)}
   html[data-layout="topbar"] #railCollapse{display:none}
 }
 
-/* --- 3. reader: one narrow column, no panels, nothing in the way -------- */
-html[data-layout="reader"]{--inner-max:700px;--row-pad:18px;--pad:40px;--rail-w:210px}
-html[data-layout="reader"] .panel,
-html[data-layout="reader"] .card,
-html[data-layout="reader"] .head-hero,
-html[data-layout="reader"] .filters{background:transparent;box-shadow:none;border:none;border-radius:0}
-html[data-layout="reader"] .card{border-bottom:1px solid var(--line);margin-bottom:28px}
-html[data-layout="reader"] .thead{display:none}            /* a column, not a table */
-html[data-layout="reader"] .trow{grid-template-columns:1fr;gap:4px;padding-left:0;padding-right:0}
-html[data-layout="reader"] .trow > div:not(:first-child){display:none}
-html[data-layout="reader"] .trow .title{font-size:19px;white-space:normal}
-html[data-layout="reader"] .trow .sub{white-space:normal}
-html[data-layout="reader"] .split,
-html[data-layout="reader"] .note-page{grid-template-columns:minmax(0,1fr)}
-html[data-layout="reader"] .card-head,
-html[data-layout="reader"] .card-body,
-html[data-layout="reader"] .timeline,
-html[data-layout="reader"] .composer,
-html[data-layout="reader"] .panel-head,
-html[data-layout="reader"] .inbox-item,
-html[data-layout="reader"] .empty{padding-left:0;padding-right:0}
+/* --- 3. split: the list and the open head share the screen -------------
+   The defining change. #view-heads stays on screen while a head is open, in
+   a column beside it, so you move through work without losing your place. */
+@media (min-width:900px){
+  html[data-layout="split"]{--row-pad:11px;--pad:20px;--rail-w:200px}
+  html[data-layout="split"] body.split-on .inner,
+  html[data-layout="split"] .inner.split-on{
+    display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);
+    gap:20px;align-items:start;
+  }
+  html[data-layout="split"] .inner.split-on > #view-heads{display:block;min-width:0}
+  html[data-layout="split"] .inner.split-on > #view-head{display:block;min-width:0}
+  /* the list column is a narrow index: drop everything but title and status */
+  html[data-layout="split"] .inner.split-on .thead,
+  html[data-layout="split"] .inner.split-on .filters,
+  html[data-layout="split"] .inner.split-on #view-heads .page-head{display:none}
+  html[data-layout="split"] .inner.split-on .trow{grid-template-columns:minmax(0,1fr) auto}
+  html[data-layout="split"] .inner.split-on .trow > div:nth-child(2),
+  html[data-layout="split"] .inner.split-on .trow .c-type,
+  html[data-layout="split"] .inner.split-on .trow .c-notes,
+  html[data-layout="split"] .inner.split-on .trow .c-when{display:none}
+  html[data-layout="split"] .inner.split-on #view-heads .panel{
+    position:sticky;top:0;max-height:calc(100vh - var(--bar-h) - 40px);overflow-y:auto;
+  }
+  html[data-layout="split"] .inner.split-on .split{grid-template-columns:minmax(0,1fr)}
+  html[data-layout="split"] .inner.split-on .crumb{display:none}
+}
 
-/* --- 4. dense: as much on screen as will fit ---------------------------- */
-html[data-layout="dense"]{--inner-max:100%;--row-pad:5px;--pad:14px;--rail-w:198px;--bar-h:46px}
-html[data-layout="dense"] .trow .sub{display:none}
-html[data-layout="dense"] .trow{align-items:center}
-html[data-layout="dense"] .trow .title{font-size:12.5px;font-weight:500}
-html[data-layout="dense"] .thead{padding-top:6px;padding-bottom:6px;font-size:8.5px}
-html[data-layout="dense"] .card-body{padding:11px}
-html[data-layout="dense"] .page-head{margin-bottom:12px}
-html[data-layout="dense"] .page-head h1{font-size:16px;letter-spacing:.12em;text-transform:uppercase}
-html[data-layout="dense"] .page-head .page-sub{display:none}
-html[data-layout="dense"] .filters{padding:9px 11px;margin-bottom:11px}
-html[data-layout="dense"] .head-hero{padding:12px 14px}
-html[data-layout="dense"] .head-hero .title-in{font-size:18px}
-html[data-layout="dense"] .note{padding-top:7px;padding-bottom:7px}
-
-/* --- 5. cards: heads as a grid of tiles --------------------------------- */
-html[data-layout="cards"]{--inner-max:1280px;--pad:28px}
+/* --- 4. cards: heads as a grid of tiles --------------------------------- */
+html[data-layout="cards"]{--pad:26px}
 html[data-layout="cards"] .thead{display:none}
-html[data-layout="cards"] #headsRows,
-html[data-layout="cards"] #kidsRows{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));
+html[data-layout="cards"] #headsRows{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
   gap:14px;padding:16px;
 }
 html[data-layout="cards"] .panel{background:transparent;box-shadow:none;border:none}
 html[data-layout="cards"] .trow{
   display:flex;flex-wrap:wrap;align-content:flex-start;align-items:center;gap:8px;
-  background:var(--panel);border:1px solid var(--line);border-bottom:1px solid var(--line);
+  background:var(--panel);border:1px solid var(--line);
   border-radius:var(--radius);padding:16px;min-height:122px;
 }
 html[data-layout="cards"] .trow .title{white-space:normal;font-size:15px;line-height:1.3}
 html[data-layout="cards"] .trow .sub{white-space:normal}
 html[data-layout="cards"] .trow > div{text-align:left !important}
-/* the title block takes its own line; the chips sit under it; the counts are
-   pushed to the foot so every card ends on the same line */
 html[data-layout="cards"] .trow > div:first-child{flex:0 0 100%}
+html[data-layout="cards"] .trow .c-notes,
+html[data-layout="cards"] .trow .c-when{display:block}
 html[data-layout="cards"] .trow .r{
   flex:0 0 auto;margin-top:auto;padding-top:4px;
   border-top:1px solid var(--line);width:auto;
 }
-/* The responsive rules below hide these columns to save width in a table.
-   A card has its own width, so it keeps them — the attribute selector wins
-   on specificity, whatever the order of the file. */
-html[data-layout="cards"] .trow .c-notes,
-html[data-layout="cards"] .trow .c-when{display:block}
 html[data-layout="cards"] .trow .c-notes{flex:1 0 auto}
 html[data-layout="cards"] .trow .c-notes::after{content:" notes"}
 html[data-layout="cards"] .trow:hover{border-color:var(--line-strong);background:var(--panel-2)}
 
-/* --- 6. board: fewer, larger cards with more on each -------------------- */
-html[data-layout="board"]{--inner-max:1180px;--pad:30px}
+/* --- 5. board: heads sorted into columns by status ----------------------
+   The rows are grouped by the app into one list per status, side by side. */
+html[data-layout="board"]{--pad:22px}
 html[data-layout="board"] .thead{display:none}
-html[data-layout="board"] #headsRows{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
-  gap:18px;padding:18px;
-}
 html[data-layout="board"] .panel{background:transparent;box-shadow:none;border:none}
-/* Same arrangement as a card, at a larger size: the title owns the top line,
-   the chips share the next, and the counts close it off at the foot. */
-html[data-layout="board"] .trow{
-  display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:10px;
-  background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--radius);padding:20px 22px;min-height:140px;
+html[data-layout="board"] #headsRows{
+  display:grid;grid-auto-flow:column;grid-auto-columns:minmax(260px,1fr);
+  gap:14px;padding:14px;align-items:start;overflow-x:auto;
 }
-html[data-layout="board"] .trow .title{white-space:normal;font-size:19px;line-height:1.28}
-html[data-layout="board"] .trow .sub{white-space:normal;margin-top:4px}
-html[data-layout="board"] .trow > div:first-child{flex:0 0 100%}
+.board-col{background:var(--panel-2);border-radius:var(--radius);padding:10px;min-height:120px}
+.board-col > .hd{
+  display:flex;align-items:center;gap:8px;padding:4px 6px 10px;
+  font-family:var(--font-disp);font-weight:600;font-size:10px;
+  letter-spacing:.18em;text-transform:var(--uppercase);color:var(--ink-soft);
+}
+.board-col > .hd .n{
+  margin-left:auto;background:var(--panel);border-radius:99px;padding:0 7px;
+  font-size:10px;color:var(--ink-faint);
+}
+html[data-layout="board"] .board-col .trow{
+  display:flex;flex-direction:column;align-items:flex-start;gap:7px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:12px;margin-bottom:9px;
+}
+html[data-layout="board"] .board-col .trow:last-child{margin-bottom:0}
+html[data-layout="board"] .trow .title{white-space:normal;font-size:14px;line-height:1.3}
+html[data-layout="board"] .trow .sub{white-space:normal}
 html[data-layout="board"] .trow > div{text-align:left !important}
-html[data-layout="board"] .trow .c-notes,
 html[data-layout="board"] .trow .c-when,
-html[data-layout="board"] .trow .c-type{display:block}
-html[data-layout="board"] .trow .r{
-  flex:0 0 auto;margin-top:auto;padding-top:9px;
-  border-top:1px solid var(--line);width:auto;font-size:11.5px;
-}
-html[data-layout="board"] .trow .c-notes{flex:1 0 auto}
+html[data-layout="board"] .trow > div:nth-child(4){display:none}
+html[data-layout="board"] .trow .c-notes{display:block}
 html[data-layout="board"] .trow .c-notes::after{content:" notes"}
-html[data-layout="board"] .trow:hover{border-color:var(--accent)}
 
-/* --- 7. console: the command line first, everything square -------------- */
-html[data-layout="console"]{--inner-max:100%;--row-pad:7px;--pad:18px;--rail-w:206px;
+/* --- 6. console: the command line is the main instrument ---------------- */
+html[data-layout="console"]{--row-pad:7px;--pad:18px;
   --radius:0px;--radius-sm:0px;--radius-xs:0px}
 html[data-layout="console"] .console{display:block}
+html[data-layout="console"] .console-out{max-height:230px}
 html[data-layout="console"] .trow .sub{display:none}
 html[data-layout="console"] .trow .title::before{content:"> ";color:var(--ink-faint)}
 html[data-layout="console"] .page-head h1::before{content:"// ";color:var(--ink-faint)}
 html[data-layout="console"] .page-head h1{font-size:16px;letter-spacing:.16em;text-transform:uppercase}
-html[data-layout="console"] .page-head .page-sub{display:none}
-html[data-layout="console"] .console-out{max-height:200px}
+html[data-layout="console"] .page-head .page-sub,
+html[data-layout="console"] .filters{display:none}  /* filter from the prompt */
 
-/* --- 8. zen: almost no chrome, a lot of room ---------------------------- */
-html[data-layout="zen"]{--inner-max:880px;--row-pad:20px;--pad:56px;--rail-w:62px;--bar-h:70px}
+/* --- 7. dense: the most rows a screen will hold ------------------------- */
+html[data-layout="dense"]{--row-pad:4px;--pad:12px;--rail-w:192px;--bar-h:44px}
+html[data-layout="dense"] .trow .sub{display:none}
+html[data-layout="dense"] .trow{align-items:center}
+html[data-layout="dense"] .trow .title{font-size:12.5px;font-weight:500}
+html[data-layout="dense"] .trow .chip{font-size:9.5px;padding:1px 6px}
+html[data-layout="dense"] .thead{padding-top:5px;padding-bottom:5px;font-size:8.5px}
+html[data-layout="dense"] .card-body{padding:10px}
+html[data-layout="dense"] .page-head{margin-bottom:10px}
+html[data-layout="dense"] .page-head h1{font-size:15px;letter-spacing:.12em;text-transform:uppercase}
+html[data-layout="dense"] .page-head .page-sub{display:none}
+html[data-layout="dense"] .filters{padding:8px 10px;margin-bottom:10px}
+html[data-layout="dense"] .head-hero{padding:11px 13px}
+html[data-layout="dense"] .head-hero .title-in{font-size:17px}
+html[data-layout="dense"] .note{padding-top:6px;padding-bottom:6px}
+html[data-layout="dense"] .statline{padding:4px 10px}
+
+/* --- 8. zen: no command bar, an icon rail, nothing else ----------------- */
+html[data-layout="zen"]{--row-pad:18px;--pad:44px;--rail-w:60px}
+html[data-layout="zen"] .cmdbar{
+  height:0;flex-basis:0;overflow:hidden;border:none;padding:0;
+}
 html[data-layout="zen"] .rail-head .wordmark,
 html[data-layout="zen"] .rail-head .who,
 html[data-layout="zen"] .rail-group > .eyebrow,
@@ -611,64 +619,67 @@ html[data-layout="zen"] .nav-item .lbl,
 html[data-layout="zen"] .statline,
 html[data-layout="zen"] .rail-foot .btn span,
 html[data-layout="zen"] #qaOpen span{display:none}
-html[data-layout="zen"] .rail{background:transparent;border-right:none}
-html[data-layout="zen"] .rail-head{padding:18px 8px;text-align:center;border:none}
-html[data-layout="zen"] .rail-body{padding:14px 8px}
+html[data-layout="zen"] .rail{background:transparent;border-right:1px solid var(--line)}
+html[data-layout="zen"] .rail-head{padding:16px 6px;text-align:center;border:none}
+html[data-layout="zen"] .rail-body{padding:12px 6px}
 html[data-layout="zen"] .nav-item{justify-content:center;padding:11px 0;position:relative}
-html[data-layout="zen"] .nav-item .count{position:absolute;top:2px;right:5px;font-size:9px;min-width:0;padding:0 4px}
-html[data-layout="zen"] .rail-foot{padding:8px;border:none}
+html[data-layout="zen"] .nav-item .count{position:absolute;top:1px;right:3px;font-size:9px;min-width:0;padding:0 4px}
+html[data-layout="zen"] .rail-foot{padding:6px;border:none}
 html[data-layout="zen"] .rail-foot .row{flex-direction:column}
 html[data-layout="zen"] #qaOpen{padding:11px 0;font-size:16px}
-html[data-layout="zen"] .cmdbar{border-bottom:none;background:transparent;backdrop-filter:none}
 html[data-layout="zen"] .panel,
 html[data-layout="zen"] .filters{background:transparent;box-shadow:none;border:none}
 html[data-layout="zen"] .thead{border-bottom:1px solid var(--line);opacity:.6}
-html[data-layout="zen"] .page-head h1{font-size:34px}
+html[data-layout="zen"] .page-head h1{font-size:32px}
+/* the search lives in the page instead, since there is no bar for it */
+html[data-layout="zen"] .page-head::after{content:"press / to search";
+  font-size:10.5px;color:var(--ink-faint);margin-left:auto;align-self:flex-end}
 
-/* --- 9. magazine: editorial. Big titles, wide margins ------------------- */
-html[data-layout="magazine"]{--inner-max:940px;--row-pad:26px;--pad:44px;--rail-w:232px}
-html[data-layout="magazine"] .panel,
-html[data-layout="magazine"] .filters,
-html[data-layout="magazine"] .card,
-html[data-layout="magazine"] .head-hero{background:transparent;box-shadow:none;border:none;border-radius:0}
-html[data-layout="magazine"] .thead{display:none}
-html[data-layout="magazine"] .trow{
-  grid-template-columns:1fr auto;gap:6px 18px;padding-left:0;padding-right:0;
-  border-bottom:1px solid var(--line);align-items:baseline;
+/* --- 9. mirror: the rail moves to the right ----------------------------- */
+@media (min-width:901px){
+  html[data-layout="mirror"]{--row-pad:13px;--pad:28px}
+  html[data-layout="mirror"] .shell{grid-template-columns:1fr var(--rail-w)}
+  html[data-layout="mirror"] .rail{order:2;border-right:none;border-left:1px solid var(--line)}
+  html[data-layout="mirror"] .work{order:1}
+  html[data-layout="mirror"] .cmdbar{flex-direction:row-reverse}
+  /* the sidebar moves, the table does not: reversing the columns put the
+     title on the right while its text still ran left to right. */
+  html[data-layout="mirror"] .split{grid-template-columns:300px minmax(0,1fr)}
+  html[data-layout="mirror"] .split > div:first-child{order:2}
+  html[data-layout="mirror"] .split > div:last-child{order:1}
 }
-html[data-layout="magazine"] .trow > div:nth-child(1){grid-column:1}
-html[data-layout="magazine"] .trow > div:nth-child(2),
-html[data-layout="magazine"] .trow > div:nth-child(4){grid-row:1}
-html[data-layout="magazine"] .trow .c-type,
-html[data-layout="magazine"] .trow .c-notes{display:none}
-html[data-layout="magazine"] .trow .title{font-size:27px;line-height:1.18;white-space:normal;letter-spacing:-.01em}
-html[data-layout="magazine"] .trow .sub{white-space:normal;margin-top:7px;font-size:12px}
-html[data-layout="magazine"] .page-head h1{font-size:44px;letter-spacing:-.02em}
-html[data-layout="magazine"] .page-head{border-bottom:2px solid var(--ink-strong);padding-bottom:16px}
-html[data-layout="magazine"] .card-head,
-html[data-layout="magazine"] .card-body,
-html[data-layout="magazine"] .timeline,
-html[data-layout="magazine"] .composer,
-html[data-layout="magazine"] .panel-head{padding-left:0;padding-right:0}
-html[data-layout="magazine"] .head-hero .title-in{font-size:38px;letter-spacing:-.02em}
 
-/* --- 10. studio: wide rail with the detail panel always alongside ------- */
-/* The point of studio is the detail panel staying alongside, so the rail and
-   the panel are both kept narrow enough for that to survive a 1040px window
-   rather than only a very wide one. */
-html[data-layout="studio"]{--inner-max:100%;--row-pad:12px;--pad:22px;--rail-w:240px}
-html[data-layout="studio"] .split{grid-template-columns:minmax(0,1fr) 296px}
-html[data-layout="studio"] .note-page{grid-template-columns:minmax(0,1fr) 296px}
-html[data-layout="studio"] .rail-head{padding:20px 18px}
-html[data-layout="studio"] .statline .v{font-size:19px}
-html[data-layout="studio"] .panel,
-html[data-layout="studio"] .card{border-radius:var(--radius)}
-html[data-layout="studio"] .page-head h1{font-size:27px}
-html[data-layout="studio"] .filters{position:sticky;top:0;z-index:5}
-@media (max-width:1010px){
-  html[data-layout="studio"] .split,
-  html[data-layout="studio"] .note-page{grid-template-columns:minmax(0,1fr)}
+/* --- 10. focus: no rail, no bar. The work and a floating strip ---------- */
+html[data-layout="focus"]{--row-pad:15px;--pad:32px}
+html[data-layout="focus"] .shell{grid-template-columns:1fr}
+html[data-layout="focus"] .rail{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+  flex-direction:row;align-items:center;gap:10px;width:auto;height:52px;
+  padding:0 12px;z-index:90;border:1px solid var(--line-strong);
+  border-radius:99px;background:var(--panel);box-shadow:var(--shadow-2);
 }
+html[data-layout="focus"] .rail-head,
+html[data-layout="focus"] .rail-group > .eyebrow,
+html[data-layout="focus"] .statline,
+html[data-layout="focus"] .nav-item .lbl,
+html[data-layout="focus"] .rail-foot .btn span,
+html[data-layout="focus"] #qaOpen span{display:none}
+html[data-layout="focus"] .rail-body{
+  display:flex;align-items:center;gap:6px;padding:0;overflow:visible;flex:0 0 auto;
+}
+html[data-layout="focus"] .rail-group{margin:0;display:flex;align-items:center;gap:6px}
+html[data-layout="focus"] .rail-group:first-child{order:2}
+html[data-layout="focus"] .nav-item{width:auto;padding:8px 11px;position:relative}
+html[data-layout="focus"] .nav-item .count{
+  position:absolute;top:-2px;right:-2px;font-size:9px;min-width:0;padding:0 4px;
+}
+html[data-layout="focus"] .rail-foot{border:none;padding:0;flex-direction:row;gap:6px;flex:0 0 auto}
+html[data-layout="focus"] .rail-foot .row{gap:6px}
+html[data-layout="focus"] .rail-foot .btn{padding:8px 10px;font-size:13px}
+html[data-layout="focus"] #qaOpen{width:auto;padding:9px 14px}
+html[data-layout="focus"] .cmdbar{background:transparent;border-bottom:1px solid var(--line)}
+html[data-layout="focus"] .surface{padding-bottom:96px}
+html[data-layout="focus"] #railCollapse{display:none}
 
 /* --------------------------------------------------------------------------
    1c. Surface style — ported from LEDGER's data-style axis

@@ -716,8 +716,8 @@ var PREF_CHOICES = {
      separately, so any theme can wear any layout. */
   mode:    ['signal', 'terminal', 'paper', 'ember', 'nocturne', 'runic',
             'royal', 'blackbox', 'sleek', 'toon'],
-  layout:  ['classic', 'topbar', 'reader', 'dense', 'cards', 'board',
-            'console', 'zen', 'magazine', 'studio'],
+  layout:  ['classic', 'topbar', 'split', 'cards', 'board', 'console',
+            'dense', 'zen', 'mirror', 'focus'],
   theme:   ['dark', 'light'],
   /* Surface treatment only — how a panel is made. Cartoon moved to the theme
      axis, where a cream palette and comic lettering actually belong. */

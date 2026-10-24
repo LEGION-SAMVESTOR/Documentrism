@@ -317,22 +317,31 @@ around, and no combination was anyone's actual choice. Now:
 - **Theme** (`data-mode`) sets colour and type. It never moves anything.
 - **Layout** (`data-layout`) sets structure. It never sets a colour.
 
-Ten layouts, each built from the same four levers — `--inner-max`,
-`--row-pad`, `--pad`, `--rail-w` — plus whatever named structural change it
-needs:
+Ten **arrangements**, not ten paddings. Spacing alone made them look like one
+design at different zoom levels; each of these moves the actual regions of the
+page. **Every layout uses the full width** — none narrows the work area.
 
-| Layout | What it is |
+| Layout | What moves |
 | --- | --- |
-| `classic` | Left rail, command bar, table. The default. |
-| `topbar` | Navigation across the top, content centred. |
-| `reader` | One 700px column, no panels, titles only. |
-| `dense` | Full width, 5px rows, as much on screen as fits. |
-| `cards` | Heads as a grid of tiles. |
-| `board` | Fewer, larger cards with more on each. |
-| `console` | Command line first, everything square. |
-| `zen` | Icon rail, no chrome, a lot of room. |
-| `magazine` | Editorial: 27px titles, wide margins, rules. |
-| `studio` | Wide rail with the detail panel alongside, from 1010px up. |
+| `classic` | Rail left, command bar, table. The default. |
+| `topbar` | No side rail at all; navigation runs across the top. |
+| `split` | The list stays beside the open head, so you keep your place. |
+| `cards` | Heads become a grid of tiles. |
+| `board` | Heads are grouped into a column per status. |
+| `console` | The command line is the main instrument. |
+| `dense` | 4px rows; the most a screen will hold. |
+| `zen` | Icon rail, and the command bar is removed entirely. |
+| `mirror` | The rail moves to the right. |
+| `focus` | No rail, no bar — a floating strip over full-width work. |
+
+Two of them cannot be done in CSS alone and have app support:
+
+- **board** groups rows into one list per status before rendering, in the
+  order the Lists tab gives them, with anything unrecognised in a final
+  column. Changing to or from it redraws the list.
+- **split** keeps `#view-heads` on screen beside `#view-head` and trims the
+  list to title and status, since it is an index at that width. Below 900px
+  there is no room for two columns and it behaves like classic.
 
 **Layout outranks theme on purpose.** Every layout selector is written
 `html[data-layout="…"]`, which beats a bare `[data-mode="…"]` on specificity.
