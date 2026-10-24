@@ -160,19 +160,31 @@ const API = (function () {
     emit("saving", queue.length > 1 ? `Saving ${queue.length} changes` : "Saving");
 
     const job = queue[0];
+    let res;
     try {
-      const res = await call(job.action, job.payload);
-      queue.shift();
-      state.queued = queue.length;
-      busy = false;
-      if (job.done) { job.done(res); }
-      if (queue.length) { pump(); } else { emit("saved", "Saved"); }
+      res = await call(job.action, job.payload);
     } catch (err) {
       busy = false;
       state.stuck = true;
-      if (job.fail) { job.fail(err); }
+      runCallback(job.fail, err);
       emit("failed", err.message);
+      return;
     }
+
+    // The write landed. From here on nothing may mark the queue stuck: a
+    // callback that throws is a rendering bug, and treating it as a failed
+    // save would wedge every later write behind a Retry that cannot help.
+    queue.shift();
+    state.queued = queue.length;
+    busy = false;
+    runCallback(job.done, res);
+    if (queue.length) { pump(); } else { emit("saved", "Saved"); }
+  }
+
+  function runCallback(fn, arg) {
+    if (!fn) return;
+    try { fn(arg); }
+    catch (e) { console.error("documentrism: callback after a completed job threw", e); }
   }
 
   function retry() {

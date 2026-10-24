@@ -25,6 +25,10 @@ const S = {
   // "the theme keeps changing by itself".
   prefsDirty: false,
   prefsSaving: 0,
+  // Anything the user has started typing and not yet saved. A background
+  // catch-up must never run while this has something in it — re-rendering
+  // throws away whatever is half-written.
+  editing: new Set(),
   shares: { incoming: [], outgoing: [] },
   sharedPerson: null,      // whose shared items are open, if any
   readonly: false,         // the head on screen belongs to someone else
@@ -670,12 +674,13 @@ function paintHead() {
   const h = S.current.head;
   applyReadonly();
   $("#crumbTitle").textContent = h.title;
-  $("#hTitle").value = h.title;
   $("#hId").textContent = h.head_id;
   $("#hCreated").textContent = fullOf(h.created_at);
   $("#hUpdated").textContent = fullOf(h.updated_at);
-  $("#hLink").value = h.link || "";
-  $("#hDetails").value = h.details || "";
+  // Never overwrite a field the user is part-way through filling in.
+  if (!S.editing.has("head-link")) $("#hLink").value = h.link || "";
+  if (!S.editing.has("head-details")) $("#hDetails").value = h.details || "";
+  if (!S.editing.has("head-title")) $("#hTitle").value = h.title;
   $("#hFlag").checked = h.needs_detail === "Yes";
   $("#hArchive").textContent = h.archived === "Yes" ? "Restore this head" : "Archive this head";
 
@@ -696,10 +701,19 @@ function paintHead() {
   renderNotes();
 }
 
+/**
+ * Rebuilds the timeline, but never at the cost of something half-written.
+ * Open editors and their current text are lifted out first and put back
+ * afterwards, so a refresh landing mid-sentence is invisible.
+ */
 function renderNotes() {
-  const notes = S.current.notes;
+  // A hole in this array must not take the whole timeline down with it.
+  const notes = (S.current.notes || []).filter(Boolean);
+  S.current.notes = notes;
   $("#hNoteCount").textContent = notes.length + (notes.length === 1 ? " entry" : " entries");
   const box = $("#hNotes");
+
+  const keep = captureOpenEditors(box);
 
   if (!notes.length) {
     box.innerHTML = emptyState("○", "No notes yet",
@@ -718,6 +732,52 @@ function renderNotes() {
   });
   box.innerHTML = html;
   wireNotes(box);
+  restoreOpenEditors(box, keep);
+}
+
+/** Which notes were open, what was typed in them, and where the caret was. */
+function captureOpenEditors(scope) {
+  const out = {};
+  $$(".note.open", scope).forEach(el => {
+    const id = el.dataset.note;
+    const fields = {};
+    $$("[data-f]", el).forEach(f => {
+      fields[f.dataset.f] = f.type === "checkbox" ? f.checked : f.value;
+    });
+    out[id] = {
+      fields,
+      focused: el.contains(document.activeElement) ? document.activeElement.dataset.f : null,
+      start: document.activeElement?.selectionStart ?? null,
+      end: document.activeElement?.selectionEnd ?? null
+    };
+  });
+  return out;
+}
+
+function restoreOpenEditors(scope, keep) {
+  Object.keys(keep || {}).forEach(id => {
+    const el = $(`.note[data-note="${CSS.escape(id)}"]`, scope);
+    if (!el) return;
+    const saved = keep[id];
+    el.classList.add("open");
+    const btn = $('[data-act="expand"]', el);
+    if (btn) btn.classList.add("on");
+
+    Object.keys(saved.fields).forEach(name => {
+      const f = $(`[data-f="${name}"]`, el);
+      if (!f) return;
+      if (f.type === "checkbox") f.checked = saved.fields[name];
+      else f.value = saved.fields[name];
+    });
+
+    if (saved.focused) {
+      const f = $(`[data-f="${saved.focused}"]`, el);
+      if (f) {
+        f.focus();
+        try { f.setSelectionRange(saved.start, saved.end); } catch (e) {}
+      }
+    }
+  });
 }
 
 function noteHtml(n) {
@@ -792,7 +852,11 @@ function wireNotes(scope) {
     $$("[data-act]", el).forEach(b => on(b, "click", ev => {
       ev.stopPropagation();
       const act = b.dataset.act;
-      if (act === "expand") { el.classList.toggle("open"); b.classList.toggle("on"); }
+      if (act === "expand") {
+        el.classList.toggle("open");
+        b.classList.toggle("on");
+        if (!el.classList.contains("open")) markEditing("note:" + id, false);
+      }
       if (act === "share") openShare("note", id, n.text.slice(0, 60));
       if (act === "archive") archiveNoteUi(id);
       if (act === "headings") {
@@ -802,6 +866,10 @@ function wireNotes(scope) {
       }
       if (act === "save") saveNoteFromUi(el, id);
     }));
+
+    // Typing in a note marks it unsaved, which holds off background refreshes
+    // until it is saved or closed.
+    $$("[data-f]", el).forEach(f => on(f, "input", () => markEditing("note:" + id, true)));
 
     $$(".shot .kill", el).forEach(k => on(k, "click", ev => {
       ev.stopPropagation();
@@ -833,10 +901,12 @@ function saveNoteFromUi(el, id) {
 
   flagDelta(n.needs_detail, patch.needs_detail);
   Object.assign(n, patch);
+  markEditing("note:" + id, false);          // saved, so refreshes may resume
   if (S.current) renderNotes();
   renderInbox();
   paintStats();
   API.enqueue({ action: "updateNote", payload: { note_id: id, patch } });
+  toast("Note saved.", "good");
 }
 
 function archiveNoteUi(id) {
@@ -955,6 +1025,7 @@ function addNoteHere() {
   if (!text) { ta.focus(); return; }
   const h = S.current.head;
   ta.value = "";
+  markEditing("composer", false);
   const shots = pendingShots;
   pendingShots = [];
   showPending();
@@ -989,7 +1060,8 @@ function addNoteOptimistic(text, headId, type, shots) {
     payload: { data: { head_id: headId || "", text, type: type || "" } },
     revive: () => { temp._failed = false; temp._pending = true; redraw(); },
     done: res => {
-      const saved = res.note;
+      const saved = res && res.note;
+      if (!saved) { return; }          // nothing to swap in; the optimistic row stands
       if (S.current) {
         const i = S.current.notes.indexOf(temp);
         if (i > -1) { S.current.notes[i] = saved; renderNotes(); }
@@ -1420,6 +1492,7 @@ function quickSave() {
   addNoteOptimistic(text, headId, type);
   closeDialog("#qaScrim");
   $("#qaText").value = "";
+  markEditing("quickadd", false);
   toast(headId ? "Note added." : "Note saved to Inbox.", "good");
 }
 
@@ -1804,6 +1877,12 @@ function wire() {
   on($("#hNoteAdd"), "click", addNoteHere);
   on($("#hNoteText"), "keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNoteHere(); } });
 
+  /* a half-typed note counts as unsaved work too */
+  on($("#hNoteText"), "input", e =>
+    markEditing("composer", e.target.value.trim().length > 0));
+  on($("#qaText"), "input", e =>
+    markEditing("quickadd", e.target.value.trim().length > 0));
+
   /* paste or drop a picture straight into the note you are writing */
   on($("#hNoteText"), "paste", e => {
     const files = Array.from(e.clipboardData?.files || []);
@@ -1824,8 +1903,10 @@ function wire() {
     if (bad) {
       toast(bad, "bad");
       e.target.value = S.current.head.title;      // put the good one back
+      markEditing("head-title", false);
       return;
     }
+    markEditing("head-title", false);
     patchHead({ title: v });
   });
   on($("#hClient"), "change", e => patchHead({ client: e.target.value }));
@@ -1836,18 +1917,26 @@ function wire() {
     const bad = linkProblem(v);
     flagField("#hLink", bad);
     if (bad) { toast(bad, "bad"); return; }
+    markEditing("head-link", false);
     patchHead({ link: v });
   });
   on($("#hFlag"), "change", e => patchHead({ needs_detail: e.target.checked ? "Yes" : "No" }));
+  /* the long details box is the easiest place to lose work, so it says so */
+  on($("#hDetails"), "input", () => markEditing("head-details", true));
+  on($("#hLink"), "input", () => markEditing("head-link", true));
+  on($("#hTitle"), "input", () => markEditing("head-title", true));
+
   on($("#hExpand"), "click", () => {
     const ta = $("#hDetails");
     const before = ta.value;
     ta.value = withHeadings(before, S.current.head.type);
     if (ta.value === before) toast("Those headings are already in the details.", "");
+    markEditing("head-details", true);
     ta.focus();
   });
   on($("#hDetailSave"), "click", () => {
     patchHead({ details: $("#hDetails").value }, false);
+    markEditing("head-details", false);
     toast("Details saved.", "good");
   });
   on($("#hArchive"), "click", () => {
@@ -1979,12 +2068,32 @@ async function reload(opts) {
 const STALE_AFTER = 45000;     // coming back to the tab
 const POLL_EVERY  = 90000;     // while the tab is in front
 
-/** Refuses to run while writes are in flight — it would clobber them. */
+/**
+ * True while the user is part-way through writing something. Covers both the
+ * field they are in right now and anything typed but not yet saved, so a note
+ * you opened, edited and left alone for a minute is still protected.
+ */
+function isEditing() {
+  // Explicit tracking only. "The cursor is in a text box" is not enough —
+  // the cursor lives in the note composer most of the time, and that would
+  // block every refresh forever. Each field that can hold unsaved work marks
+  // itself here on input and clears itself when saved, closed or emptied.
+  return S.editing.size > 0;
+}
+
+/** Refuses to run while writes are in flight, or while anything is being typed. */
 function catchUp(force) {
   if (!S.user || document.hidden) return;
   if (API.pending() || API.state.stuck) return;
+  if (isEditing()) return;
   if (!force && Date.now() - (S.lastSync || 0) < STALE_AFTER) return;
   reload({ background: true });
+}
+
+/** Call when a field starts/stops holding unsaved text. */
+function markEditing(key, dirty) {
+  if (dirty) S.editing.add(key);
+  else S.editing.delete(key);
 }
 
 function wireAutoRefresh() {

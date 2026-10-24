@@ -114,10 +114,31 @@ pushed into someone else's work.
 
 ---
 
+## Not losing what you are typing
+
+Background catch-ups re-render, and re-rendering destroys a half-written note.
+Two things stop that:
+
+- `S.editing` holds a key for every field with unsaved text. Each field adds
+  itself on input and clears itself on save, close or empty. `catchUp` refuses
+  to run while that set has anything in it. It is explicit tracking, not "the
+  cursor is in a text box" — the cursor lives in the note composer most of the
+  time, and that would block refreshes forever.
+- `renderNotes` lifts open editors out before rebuilding and puts them back
+  after, including the focused field and the caret. So even a refresh that does
+  land mid-sentence is invisible.
+
+The same rule guards appearance (`prefsBusy`) and the head's title, link and
+details fields.
+
 ## Saving
 
 A note is drawn on screen immediately and sent afterwards — a sheet write takes
 one to two seconds, too long to block typing.
+
+A callback that throws **after** a write has landed can no longer mark the
+queue stuck. It is a rendering bug, and treating it as a failed save used to
+wedge every later write behind a Retry that could not help.
 
 `api.js` holds a serial queue:
 
@@ -229,6 +250,19 @@ follows them to another computer.
 | `signal` | Default. LEDGER's palette and type on an application shell. |
 | `terminal` | A console: phosphor on black, square corners, a command line. |
 | `paper` | Light, serif, generous — for reading and writing long details. |
+| `ember` | Red on black. Two coals breathing underneath. |
+| `nocturne` | A night sky: drifting stars, cold light, deep indigo. |
+| `runic` | Obsidian and old gold, an arcane shimmer turning behind it. |
+| `royal` | Deep violet and gold, formal, with a slow sheen. |
+| `blackbox` | Amber CRT: scanlines, a sweeping line, command line on. |
+| `sleek` | Near-monochrome, one pale light, almost subliminal. |
+
+The six dark modes each have a moving backdrop, drawn in a single fixed
+`.bgfx` layer behind everything. Only `transform` and `opacity` animate,
+nothing sits in the scroll path, and the layer is inert unless the mode asks
+for it — so the cost is one compositor layer and no scroll work. Both
+**Animations: off** and `prefers-reduced-motion` stop the motion while leaving
+the backdrop in place, rather than removing it.
 
 Crossed with a **surface style** on `<html data-style>`, ported from LEDGER's
 own axis: `plain`, `glass` (frosted and translucent), `neo` (soft extruded

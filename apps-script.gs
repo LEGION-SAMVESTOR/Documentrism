@@ -702,7 +702,8 @@ function doLogout(token) {
 
 /** One place that knows what a preference may be. Anything else is ignored. */
 var PREF_CHOICES = {
-  mode:    ['signal', 'terminal', 'paper'],
+  mode:    ['signal', 'terminal', 'paper', 'ember', 'nocturne', 'runic',
+            'royal', 'blackbox', 'sleek'],
   theme:   ['dark', 'light'],
   style:   ['plain', 'glass', 'neo', 'flat', 'brutal', 'toon'],
   accent:  ['default', 'emerald', 'amber', 'violet', 'magenta', 'crimson'],

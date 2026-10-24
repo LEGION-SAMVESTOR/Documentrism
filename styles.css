@@ -1,11 +1,17 @@
 /* ==========================================================================
    DOCUMENTRISM — stylesheet
 
-   Three design modes, chosen per person and stored on their account:
+   Nine design modes, chosen per person and stored on their account:
 
      signal    the default. LEDGER's palette and type on an application shell.
      terminal  a console: phosphor on black, square corners, a command line.
      paper     quiet light reading mode, serif, for long write-ups.
+     ember     red on black, two coals breathing underneath.
+     nocturne  a night sky: drifting stars, cold light, deep indigo.
+     runic     obsidian and old gold, an arcane shimmer turning behind it.
+     royal     deep violet and gold, formal, with a slow sheen.
+     blackbox  amber CRT: scanlines, a sweeping line, command line on.
+     sleek     near-monochrome, one pale light, almost subliminal.
 
    A mode is a token swap on <html data-mode>, not a separate stylesheet, so
    every component below is written once and follows whichever mode is on.
@@ -196,6 +202,201 @@
   --accent:#d79a5e;
   --accent-dim:rgba(215,154,94,.12);
   --accent-ink:#17150f;
+}
+
+/* --------------------------------------------------------------------------
+   1a-ii. The dark modes
+
+   Six more palettes, all dark, each with its own light. They are token blocks
+   like the three above — no component below knows they exist. The moving part
+   of each lives in .bgfx at the end of this file, so the app itself never
+   animates and scrolling stays cheap.
+   -------------------------------------------------------------------------- */
+
+/* --- ember: red on black. Hot metal in a dark room ------------------------ */
+[data-mode="ember"]{
+  --bg:#0a0506;
+  --bg-tint:rgba(255,62,62,.07);
+  --panel:#15090b;
+  --panel-2:rgba(255,92,92,.045);
+  --panel-3:rgba(255,92,92,.1);
+  --rail:#0d0607;
+
+  --ink:#f0d9da;
+  --ink-strong:#fff4f4;
+  --ink-soft:#9d7074;
+  --ink-faint:#6d484c;
+
+  --line:rgba(255,92,92,.17);
+  --line-strong:rgba(255,92,92,.4);
+
+  --accent:#ff3b3b;
+  --accent-dim:rgba(255,59,59,.14);
+  --accent-ink:#170406;
+
+  --green:#4ade80;--green-bg:rgba(74,222,128,.12);
+  --blue:#60a5fa; --blue-bg:rgba(96,165,250,.12);
+  --red:#ff5c69;  --red-bg:rgba(255,92,105,.14);
+  --amber:#fbbf24;--amber-bg:rgba(251,191,36,.13);
+
+  --font-disp:"Chakra Petch",system-ui,sans-serif;
+  --radius:10px;--radius-sm:7px;--radius-xs:5px;
+}
+
+/* --- nocturne: a night sky. Deep indigo, cold starlight ------------------- */
+[data-mode="nocturne"]{
+  --bg:#05070f;
+  --bg-tint:rgba(99,132,255,.08);
+  --panel:#0b1020;
+  --panel-2:rgba(150,175,255,.045);
+  --panel-3:rgba(150,175,255,.1);
+  --rail:#070a16;
+
+  --ink:#d4dcf5;
+  --ink-strong:#f2f5ff;
+  --ink-soft:#7985ab;
+  --ink-faint:#525d80;
+
+  --line:rgba(150,175,255,.16);
+  --line-strong:rgba(150,175,255,.36);
+
+  --accent:#8ea2ff;
+  --accent-dim:rgba(142,162,255,.14);
+  --accent-ink:#060a18;
+
+  --green:#5eead4;--green-bg:rgba(94,234,212,.12);
+  --blue:#7dd3fc; --blue-bg:rgba(125,211,252,.12);
+  --red:#fb7185;  --red-bg:rgba(251,113,133,.13);
+  --amber:#fcd34d;--amber-bg:rgba(252,211,77,.12);
+
+  --font-disp:"Chakra Petch",system-ui,sans-serif;
+  --radius:16px;--radius-sm:11px;
+}
+
+/* --- runic: mythical. Obsidian, old gold, a trace of arcane violet -------- */
+[data-mode="runic"]{
+  --bg:#0a0908;
+  --bg-tint:rgba(198,154,74,.07);
+  --panel:#15120e;
+  --panel-2:rgba(214,176,98,.05);
+  --panel-3:rgba(214,176,98,.11);
+  --rail:#0d0b09;
+
+  --ink:#e8dcc2;
+  --ink-strong:#fbf3e0;
+  --ink-soft:#9a8a6b;
+  --ink-faint:#6b5f49;
+
+  --line:rgba(214,176,98,.2);
+  --line-strong:rgba(214,176,98,.44);
+
+  --accent:#d6b062;
+  --accent-dim:rgba(214,176,98,.13);
+  --accent-ink:#140f06;
+
+  --green:#86b96a;--green-bg:rgba(134,185,106,.13);
+  --blue:#9c8bd6; --blue-bg:rgba(156,139,214,.14);
+  --red:#cc5f52;  --red-bg:rgba(204,95,82,.14);
+  --amber:#e0a93f;--amber-bg:rgba(224,169,63,.14);
+
+  --font-disp:"Fraunces",Georgia,serif;
+  --radius:8px;--radius-sm:6px;--radius-xs:4px;
+  --track:.06em;
+}
+
+/* --- royal: deep violet and gold, calm and formal ------------------------- */
+[data-mode="royal"]{
+  --bg:#0a0718;
+  --bg-tint:rgba(190,150,255,.08);
+  --panel:#140f2b;
+  --panel-2:rgba(205,175,255,.05);
+  --panel-3:rgba(205,175,255,.11);
+  --rail:#0c0920;
+
+  --ink:#ddd4f2;
+  --ink-strong:#f6f1ff;
+  --ink-soft:#9287b2;
+  --ink-faint:#655c86;
+
+  --line:rgba(205,175,255,.17);
+  --line-strong:rgba(205,175,255,.4);
+
+  --accent:#e8c87a;
+  --accent-dim:rgba(232,200,122,.13);
+  --accent-ink:#17102e;
+
+  --green:#7fd1a8;--green-bg:rgba(127,209,168,.12);
+  --blue:#9db8ff; --blue-bg:rgba(157,184,255,.12);
+  --red:#f08a8a;  --red-bg:rgba(240,138,138,.13);
+  --amber:#e8c87a;--amber-bg:rgba(232,200,122,.13);
+
+  --font-disp:"Fraunces",Georgia,serif;
+  --radius:14px;--radius-sm:10px;
+  --track:.05em;
+}
+
+/* --- blackbox: amber CRT. The hacker one, scanlines and all --------------- */
+[data-mode="blackbox"]{
+  --bg:#060503;
+  --bg-tint:transparent;
+  --panel:#0c0a05;
+  --panel-2:rgba(255,176,46,.05);
+  --panel-3:rgba(255,176,46,.11);
+  --rail:#060503;
+
+  --ink:#ffb02e;
+  --ink-strong:#ffd98a;
+  --ink-soft:#a1701c;
+  --ink-faint:#6d4c13;
+
+  --line:rgba(255,176,46,.22);
+  --line-strong:rgba(255,176,46,.46);
+
+  --accent:#ffb02e;
+  --accent-dim:rgba(255,176,46,.14);
+  --accent-ink:#140c01;
+
+  --green:#9ae66e;--green-bg:rgba(154,230,110,.12);
+  --blue:#6ecbe6; --blue-bg:rgba(110,203,230,.12);
+  --red:#ff6b4a;  --red-bg:rgba(255,107,74,.14);
+  --amber:#ffb02e;--amber-bg:rgba(255,176,46,.14);
+
+  --font-body:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --font-disp:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --radius:0px;--radius-sm:0px;--radius-xs:0px;
+  --fs:13px;--track:.12em;
+}
+[data-mode="blackbox"] .console{display:block}
+
+/* --- sleek: near-monochrome, one cool edge. The quiet high-tech one ------- */
+[data-mode="sleek"]{
+  --bg:#08090b;
+  --bg-tint:rgba(190,205,225,.05);
+  --panel:#101216;
+  --panel-2:rgba(225,235,250,.035);
+  --panel-3:rgba(225,235,250,.08);
+  --rail:#0a0b0e;
+
+  --ink:#d7dde6;
+  --ink-strong:#ffffff;
+  --ink-soft:#7d8695;
+  --ink-faint:#565e6b;
+
+  --line:rgba(225,235,250,.1);
+  --line-strong:rgba(225,235,250,.26);
+
+  --accent:#e8edf5;
+  --accent-dim:rgba(232,237,245,.1);
+  --accent-ink:#0a0b0e;
+
+  --green:#6ee7a8;--green-bg:rgba(110,231,168,.1);
+  --blue:#8ab4ff; --blue-bg:rgba(138,180,255,.1);
+  --red:#ff7a85;  --red-bg:rgba(255,122,133,.1);
+  --amber:#ffd27a;--amber-bg:rgba(255,210,122,.1);
+
+  --font-disp:"Chakra Petch",system-ui,sans-serif;
+  --radius:12px;--radius-sm:9px;
+  --track:.06em;
 }
 
 /* --------------------------------------------------------------------------
@@ -1045,6 +1246,128 @@ body.readonly .title-in:hover{background:transparent}
 [data-mode="paper"] .head-hero .title-in{font-size:32px}
 [data-mode="paper"] .note-text{font-size:15.5px}
 [data-mode="paper"] .thead{font-size:11px;letter-spacing:.06em}
+
+/* --------------------------------------------------------------------------
+   7b. Moving backdrops
+
+   One fixed layer behind everything, three children a mode can use however it
+   likes. Only transform and opacity are animated, nothing is in the scroll
+   path, and it is inert unless the mode asks for it — so the cost is a
+   compositor layer and nothing else.
+
+   Honours Animations: off, and prefers-reduced-motion, in both cases by going
+   completely still rather than disappearing.
+   -------------------------------------------------------------------------- */
+.bgfx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.bgfx i{position:absolute;display:block;opacity:0}
+.shell,.gate,.scrim,.toasts,.lightbox,.boot{position:relative;z-index:1}
+
+/* ember — two slow coals breathing under the page */
+[data-mode="ember"] .bgfx i:nth-child(1),
+[data-mode="ember"] .bgfx i:nth-child(2){
+  opacity:1;width:62vmax;height:62vmax;border-radius:50%;filter:blur(60px);
+}
+[data-mode="ember"] .bgfx i:nth-child(1){
+  left:-18vmax;top:-22vmax;
+  background:radial-gradient(circle,rgba(255,48,48,.2),transparent 68%);
+  animation:emberA 17s ease-in-out infinite;
+}
+[data-mode="ember"] .bgfx i:nth-child(2){
+  right:-20vmax;bottom:-26vmax;
+  background:radial-gradient(circle,rgba(255,110,40,.15),transparent 68%);
+  animation:emberB 23s ease-in-out infinite;
+}
+@keyframes emberA{0%,100%{transform:scale(1);opacity:.75}50%{transform:scale(1.14);opacity:1}}
+@keyframes emberB{0%,100%{transform:scale(1.1);opacity:.6}50%{transform:scale(1);opacity:.95}}
+
+/* nocturne — a star field, drifting and twinkling */
+[data-mode="nocturne"] .bgfx i:nth-child(1),
+[data-mode="nocturne"] .bgfx i:nth-child(2){
+  opacity:1;inset:-50%;width:200%;height:200%;
+  background-repeat:repeat;
+}
+[data-mode="nocturne"] .bgfx i:nth-child(1){
+  background-image:
+    radial-gradient(1.4px 1.4px at 20% 30%, rgba(255,255,255,.75), transparent),
+    radial-gradient(1.2px 1.2px at 70% 60%, rgba(190,210,255,.6), transparent),
+    radial-gradient(1.6px 1.6px at 45% 80%, rgba(255,255,255,.5), transparent),
+    radial-gradient(1px 1px at 85% 20%, rgba(220,230,255,.6), transparent);
+  background-size:280px 280px,360px 360px,420px 420px,300px 300px;
+  animation:driftA 150s linear infinite, twinkle 7s ease-in-out infinite;
+}
+[data-mode="nocturne"] .bgfx i:nth-child(2){
+  background-image:
+    radial-gradient(1px 1px at 10% 70%, rgba(255,255,255,.45), transparent),
+    radial-gradient(1.3px 1.3px at 60% 15%, rgba(170,195,255,.45), transparent);
+  background-size:500px 500px,600px 600px;
+  animation:driftB 230s linear infinite;
+}
+[data-mode="nocturne"] .bgfx i:nth-child(3){
+  opacity:1;left:-10vmax;top:-18vmax;width:70vmax;height:70vmax;border-radius:50%;
+  filter:blur(70px);
+  background:radial-gradient(circle,rgba(90,110,255,.16),transparent 70%);
+  animation:emberA 29s ease-in-out infinite;
+}
+@keyframes driftA{to{transform:translate3d(-280px,-280px,0)}}
+@keyframes driftB{to{transform:translate3d(300px,-240px,0)}}
+@keyframes twinkle{0%,100%{opacity:.75}50%{opacity:1}}
+
+/* runic — a slow arcane shimmer turning behind the page */
+[data-mode="runic"] .bgfx i:nth-child(1){
+  opacity:1;left:50%;top:50%;width:150vmax;height:150vmax;margin:-75vmax 0 0 -75vmax;
+  background:conic-gradient(from 0deg,
+    transparent 0deg, rgba(214,176,98,.07) 40deg, transparent 90deg,
+    transparent 180deg, rgba(156,139,214,.07) 220deg, transparent 280deg);
+  animation:spin 120s linear infinite;
+}
+[data-mode="runic"] .bgfx i:nth-child(2){
+  opacity:1;inset:0;
+  background:radial-gradient(ellipse at 50% 120%, rgba(214,176,98,.1), transparent 60%);
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* royal — a sheen moving slowly across deep violet */
+[data-mode="royal"] .bgfx i:nth-child(1){
+  opacity:1;inset:-40% -60%;
+  background:linear-gradient(115deg, transparent 38%, rgba(232,200,122,.08) 50%, transparent 62%);
+  animation:sheen 26s ease-in-out infinite;
+}
+[data-mode="royal"] .bgfx i:nth-child(2){
+  opacity:1;inset:0;
+  background:radial-gradient(ellipse at 15% 0%, rgba(150,110,255,.16), transparent 55%);
+}
+@keyframes sheen{0%,100%{transform:translateX(-14%)}50%{transform:translateX(14%)}}
+
+/* blackbox — CRT scanlines, with one bright line sweeping down */
+[data-mode="blackbox"] .bgfx i:nth-child(1){
+  opacity:1;inset:0;
+  background:repeating-linear-gradient(180deg,
+    rgba(255,176,46,.05) 0 1px, transparent 1px 3px);
+}
+[data-mode="blackbox"] .bgfx i:nth-child(2){
+  opacity:1;left:0;right:0;height:28vh;
+  background:linear-gradient(180deg, transparent, rgba(255,176,46,.055), transparent);
+  animation:sweep 9s linear infinite;
+}
+[data-mode="blackbox"] .bgfx i:nth-child(3){
+  opacity:1;inset:0;
+  background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);
+}
+@keyframes sweep{0%{transform:translateY(-30vh)}100%{transform:translateY(100vh)}}
+
+/* sleek — one pale gradient breathing, almost subliminal */
+[data-mode="sleek"] .bgfx i:nth-child(1){
+  opacity:1;left:-25vmax;top:-30vmax;width:85vmax;height:85vmax;border-radius:50%;
+  filter:blur(80px);
+  background:radial-gradient(circle,rgba(150,180,230,.1),transparent 70%);
+  animation:emberA 34s ease-in-out infinite;
+}
+
+/* still, but still there, when motion is unwanted */
+[data-anim="off"] .bgfx i{animation:none !important}
+@media (prefers-reduced-motion:reduce){
+  .bgfx i{animation:none !important}
+}
 
 /* --------------------------------------------------------------------------
    8. Narrow screens
