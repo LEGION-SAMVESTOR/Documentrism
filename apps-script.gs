@@ -946,6 +946,40 @@ function childrenOf_(user, headId) {
   });
 }
 
+/**
+ * Live sub-heads of a head belonging to a given owner, with note counts.
+ * Used for readers as well as the owner, so access must already be settled
+ * by the caller before this is used.
+ */
+function childrenOfHead_(headId, ownerId) {
+  var ht = table_(TAB.HEADS), nt = table_(TAB.NOTES);
+  var hId = col_(ht, 'head_id'), hOwner = col_(ht, 'owner_id');
+  var hPar = ht.idx.parent_id, hArch = ht.idx.archived;
+
+  var counts = {};
+  var nHead = col_(nt, 'head_id'), nArch = nt.idx.archived, nId = col_(nt, 'note_id');
+  nt.rows.forEach(function (r) {
+    if (!str_(r[nId])) { return; }
+    if (nArch !== undefined && yes_(r[nArch])) { return; }
+    var h = str_(r[nHead]);
+    if (h) { counts[h] = (counts[h] || 0) + 1; }
+  });
+
+  var out = [];
+  ht.rows.forEach(function (r) {
+    if (!str_(r[hId]) || str_(r[hOwner]) !== str_(ownerId)) { return; }
+    if (hPar === undefined || str_(r[hPar]) !== str_(headId)) { return; }
+    if (hArch !== undefined && yes_(r[hArch])) { return; }
+    var o = clean_(toObj_(ht, r, COLS.Heads), COLS.Heads);
+    o.note_count = counts[o.head_id] || 0;
+    out.push(o);
+  });
+  out.sort(function (a, b) {
+    return (b.updated_at || '').localeCompare(a.updated_at || '');
+  });
+  return out;
+}
+
 /** Throws unless this head exists AND belongs to the caller. */
 function requireOwnHead_(user, headId) {
   var ht = table_(TAB.HEADS);
@@ -1019,7 +1053,7 @@ function doGetHead(user, headId) {
   var row = ht.rows[rowNum - 2];
   var ownerId = str_(row[col_(ht, 'owner_id')]);
   var mine = ownerId === str_(user.user_id);
-  if (!mine && !sharedWithMe_(user, 'head', headId)) {
+  if (!mine && !headSharedWithMe_(user, headId)) {
     fail_('That head does not exist.', 'not_found');
   }
 
@@ -1030,7 +1064,11 @@ function doGetHead(user, headId) {
   head.note_count = notes.length;
 
   var out = { ok: true, head: head, notes: notes, readonly: !mine };
-  if (mine) { out.children = childrenOf_(user, headId); }
+
+  // Sub-heads are part of what was shared, so a reader sees them too — a list
+  // that silently stopped at the parent would misrepresent the work.
+  out.children = childrenOfHead_(headId, ownerId);
+
   if (!mine) {
     var who = usersIndex_()[ownerId];
     out.owner = who ? { name: who.name, username: who.username } : null;
@@ -1392,9 +1430,11 @@ function doGetNote(user, noteId) {
   var mine = ownerId === str_(user.user_id);
   var headId = str_(row[col_(nt, 'head_id')]);
 
+  // Shared directly, or sitting under a head that was shared — including one
+  // reached through a sub-head.
   if (!mine &&
       !sharedWithMe_(user, 'note', noteId) &&
-      !(headId && sharedWithMe_(user, 'head', headId))) {
+      !(headId && headSharedWithMe_(user, headId))) {
     fail_('That note does not exist.', 'not_found');
   }
 
@@ -1571,7 +1611,7 @@ function doGetImage(user, imageId) {
     if (str_(r[ownerCol]) === me) { allowed = true; break; }
     if (sharedWithMe_(user, 'note', str_(r[idCol]))) { allowed = true; break; }
     var hid = str_(r[headCol]);
-    if (hid && sharedWithMe_(user, 'head', hid)) { allowed = true; break; }
+    if (hid && headSharedWithMe_(user, hid)) { allowed = true; break; }
     break;                       // found the note, but it is not ours to read
   }
   if (!allowed) { fail_('That image does not exist.', 'not_found'); }
@@ -1664,12 +1704,63 @@ function liveShares_() {
   return out;
 }
 
-/** True when this item was shared with the caller by its owner. */
+/** True when this exact item was shared with the caller. */
 function sharedWithMe_(user, kind, itemId) {
   var me = str_(user.user_id);
   return liveShares_().some(function (s) {
     return s.target_id === me && s.kind === kind && s.item_id === str_(itemId);
   });
+}
+
+/**
+ * The chain from a head up to its top-level ancestor, itself included.
+ * Heads can only be parented within one owner's tree (checkParent_ enforces
+ * that), so a chain never crosses between people.
+ */
+function headChain_(headId) {
+  var t = table_(TAB.HEADS);
+  var idCol = col_(t, 'head_id');
+  var parCol = t.idx.parent_id;
+  var parentOf = {};
+  t.rows.forEach(function (r) {
+    var id = str_(r[idCol]);
+    if (id) { parentOf[id] = parCol === undefined ? '' : str_(r[parCol]); }
+  });
+
+  var chain = [], cur = str_(headId), seen = {};
+  while (cur && !seen[cur]) {
+    seen[cur] = 1;
+    chain.push(cur);
+    cur = parentOf[cur];
+    if (chain.length > 50) { break; }   // corrupt data must not hang this
+  }
+  return chain;
+}
+
+/**
+ * Sharing a head shares everything under it. A sub-head is part of the same
+ * piece of work — sharing the parent and then having to share each child
+ * separately would be a trap, and the recipient would see an incomplete
+ * picture without being told so.
+ *
+ * So access is granted if the head itself, or ANY head above it, was shared
+ * with the caller.
+ */
+function headSharedWithMe_(user, headId) {
+  var me = str_(user.user_id);
+  var shares = liveShares_();
+  if (!shares.length) { return false; }
+
+  var chain = headChain_(headId);
+  for (var i = 0; i < chain.length; i++) {
+    for (var j = 0; j < shares.length; j++) {
+      var s = shares[j];
+      if (s.target_id === me && s.kind === 'head' && s.item_id === chain[i]) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function doShareItem(user, kind, itemId, toUsername) {
@@ -1772,6 +1863,9 @@ function doListShares(user) {
           h = JSON.parse(JSON.stringify(h));
           h.note_count = (notesByHead[s.item_id] || []).length;
           h.share_id = s.share_id;
+          // Say how much comes with it, so the reader knows the sub-heads
+          // are there before opening it.
+          h.sub_count = childrenOfHead_(s.item_id, s.owner_id).length;
           slot.heads.push(h);
         }
       } else {
@@ -2090,3 +2184,4 @@ function issueResetCode() {
            '\n\nGive this to them in person or over a channel you trust. ' +
            'It works once, on the "Forgot password" screen.');
 }
+

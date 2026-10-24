@@ -1516,6 +1516,23 @@ body.readonly .props .toggle{pointer-events:none;opacity:.72}
 body.readonly .title-in:hover{background:transparent}
 
 /* The detail fields become plain reading surfaces, not dead form controls. */
+/* The note page had none of this: a reader could type into the boxes and
+   press Save, and only then be told the note was not theirs. The server
+   always refused the write, but the interface should never have asked. */
+body.readonly #nvSave,
+body.readonly #nvExpand,
+body.readonly #nvLinkAdd,
+body.readonly #nvLinks .cut,
+body.readonly #nvKidsCard .cut{display:none !important}
+body.readonly #nvText,
+body.readonly #nvDetails,
+body.readonly #nvLink,
+body.readonly #nvType,
+body.readonly #nvFlag{pointer-events:none}
+body.readonly #nvFlag{opacity:.6}
+body.readonly #nvText{background:transparent}
+body.readonly #nvText:hover{background:transparent}
+
 body.readonly .details-ta,
 body.readonly .note-detail .ta,
 body.readonly .note-detail .inp,

@@ -221,8 +221,18 @@ names only, no birthdays, no hashes.
 Shared content is never written to the local cache, which is keyed per account
 and meant for your own work.
 
+**Sharing a head shares everything inside it** — its notes, its sub-heads and
+their notes, including ones added later. Access is granted if the head itself
+**or any head above it** was shared with the caller (`headSharedWithMe_` walks
+the parent chain). Sharing a parent and then having to share each child
+separately would be a trap, and the reader would see an incomplete picture
+without being told so.
+
+Note and image reads go through the same check, so a note under a shared
+sub-head opens and its pictures load.
+
 A recipient can read **everything** on a shared head: its details, every note,
-and each note's full details. Read-only hides the controls that would change
+each note's full details, and the sub-heads beneath it. Read-only hides the controls that would change
 something (composer, save, archive, share, image delete) and turns the detail
 fields into plain reading surfaces — still selectable, so the text can be
 copied. The expand button stays, because hiding it was the difference between

@@ -796,9 +796,12 @@ function applyReadonly() {
   if (!banner) return;
   if (S.readonly) {
     const who = S.currentOwner ? `${S.currentOwner.name} (${S.currentOwner.username})` : "someone else";
+    const kids = (S.current && S.current.children || []).length;
     banner.innerHTML = `<span class="dot" style="background:var(--blue)"></span>
       <span>Shared with you by <b>${esc(who)}</b> — you can read everything here,
-      including each note's full details. You cannot change any of it.</span>`;
+      including each note's full details${
+        kids ? ` and its ${kids} sub-head${kids === 1 ? "" : "s"}` : ""
+      }. You cannot change any of it.</span>`;
     banner.classList.remove("hide");
   } else {
     banner.classList.add("hide");
@@ -894,7 +897,9 @@ function renderKids() {
   const card = $("#kidsCard");
   if (!card) return;
   const kids = (S.current && S.current.children) || [];
-  if (S.readonly || !kids.length) { card.classList.add("hide"); return; }
+  // Shown to readers too — sharing a head shares what is under it, and a
+  // list that stopped at the parent would misrepresent the work.
+  if (!kids.length) { card.classList.add("hide"); return; }
 
   card.classList.remove("hide");
   $("#kidsCount").textContent = kids.length + (kids.length === 1 ? " sub-head" : " sub-heads");
@@ -1468,6 +1473,17 @@ function paintNote() {
 
   fillSelect($("#nvType"), S.lists.types, { blank: "No type", value: note.type || "" });
 
+  // Belt and braces: the fields themselves refuse input, not only the CSS.
+  // readOnly rather than disabled, so the text can still be selected and
+  // copied — reading is the whole point of a shared note.
+  [["#nvText", "ro"], ["#nvDetails", "ro"], ["#nvLink", "ro"],
+   ["#nvType", "dis"], ["#nvFlag", "dis"]].forEach(([sel, how]) => {
+    const el = $(sel);
+    if (!el) return;
+    if (how === "ro") el.readOnly = !!readonly;
+    else el.disabled = !!readonly;
+  });
+
   const crumb = $("#nvCrumbHead");
   if (head) {
     crumb.innerHTML = `<span>/</span><button class="up" data-up>${esc(head.title)}</button>`;
@@ -1537,6 +1553,10 @@ function renderLinkList(sel, rows, fromId, cuttable) {
 }
 
 function saveNotePage() {
+  if (S.readonly) {
+    toast("This was shared with you — you can read it, not change it.", "bad");
+    return;
+  }
   const n = S.note.note;
   const patch = {
     text: $("#nvText").value.trim(),
@@ -1875,7 +1895,8 @@ function renderShared() {
       <button class="trow" data-shared-head="${esc(h.head_id)}">
         <div>
           <div class="title">${esc(h.title)}</div>
-          <div class="sub">head · ${h.note_count} note${h.note_count === 1 ? "" : "s"}</div>
+          <div class="sub">head · ${h.note_count} note${h.note_count === 1 ? "" : "s"}${
+            h.sub_count ? ` · ${h.sub_count} sub-head${h.sub_count === 1 ? "" : "s"}` : ""}</div>
         </div>
         <div>${h.client ? `<span class="chip client">${esc(h.client)}</span>` : `<span class="faint">—</span>`}</div>
         <div class="c-type">${h.type ? `<span class="chip">${esc(h.type)}</span>` : ""}</div>

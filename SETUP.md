@@ -224,9 +224,14 @@ button that cuts access immediately.
 Their **Shared** tab shows the people who have shared with them; clicking a
 name opens that person's items.
 
-They can read **all** of it — the head's details, every note, and each note's
-full details (press the ⤢ on a note to open them). They cannot change
-anything.
+They can read **all** of it — the head's details, every note, each note's full
+details (press the ⤢ on a note, or ↗ to open it on its own page), **and every
+sub-head underneath with its notes**. Share the top head and the whole thing
+goes with it, including anything you add later.
+
+They cannot change any of it. Every field is read-only for them, and the
+server refuses a write from anyone but the owner regardless of what the screen
+shows.
 
 **Three modes:**
 
