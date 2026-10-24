@@ -30,7 +30,11 @@ var VERSION = '2.3.0';
  * which is otherwise impossible to tell from the outside, and the one question
  * that comes up every time the front end moves ahead of the backend.
  */
-var CAPABILITIES = ['accounts', 'sharing', 'images', 'validation', 'search'];
+var CAPABILITIES = ['accounts', 'sharing', 'images', 'validation', 'search',
+                    'subheads'];
+
+/** How deep heads may nest. A head, its sub-heads, and two more levels. */
+var MAX_DEPTH = 4;
 
 var TAB = {
   USERS: 'Users',
@@ -48,8 +52,9 @@ var COLS = {
              'reset_code', 'created_at', 'last_login', 'failed_logins',
              'locked_until', 'status'],
   Sessions: ['token', 'user_id', 'created_at', 'expires_at', 'agent'],
-  Heads:    ['head_id', 'owner_id', 'created_at', 'title', 'client', 'type',
-             'status', 'needs_detail', 'link', 'details', 'updated_at', 'archived'],
+  Heads:    ['head_id', 'owner_id', 'parent_id', 'created_at', 'title', 'client',
+             'type', 'status', 'needs_detail', 'link', 'details', 'updated_at',
+             'archived'],
   Notes:    ['note_id', 'owner_id', 'head_id', 'created_at', 'text', 'type',
              'link', 'details', 'needs_detail', 'images', 'updated_at', 'archived'],
   Lists:    ['clients', 'types', 'statuses'],
@@ -854,6 +859,75 @@ function ownedNotes_(user, pred) {
   return out;
 }
 
+/* --- nesting --------------------------------------------------------------
+   A head may sit under another head. Two things must never happen: a head
+   becoming its own ancestor, and a chain so deep the list is unreadable. Both
+   are checked here, on the way in, rather than hoped for.
+   ------------------------------------------------------------------------ */
+
+/** owner's heads as { id: parent_id }, for walking the chain. */
+function parentMap_(ownerId) {
+  var t = table_(TAB.HEADS);
+  var idCol = col_(t, 'head_id'), ownCol = col_(t, 'owner_id');
+  var parCol = t.idx.parent_id;
+  var map = {};
+  t.rows.forEach(function (r) {
+    if (str_(r[ownCol]) !== ownerId) { return; }
+    var id = str_(r[idCol]);
+    if (id) { map[id] = parCol === undefined ? '' : str_(r[parCol]); }
+  });
+  return map;
+}
+
+function depthOf_(map, id) {
+  var depth = 1, seen = {}, cur = str_(id);
+  while (cur && map[cur] && !seen[cur]) {
+    seen[cur] = 1;
+    cur = map[cur];
+    depth++;
+    if (depth > 50) { break; }          // corrupt data: do not hang
+  }
+  return depth;
+}
+
+/**
+ * Validates a proposed parent for `headId` (headId may be '' when creating).
+ * Returns the cleaned parent id.
+ */
+function checkParent_(user, headId, parentId) {
+  var parent = str_(parentId);
+  if (!parent) { return ''; }
+
+  var me = str_(user.user_id);
+  if (parent === str_(headId)) { fail_('A head cannot sit under itself.', 'bad_request'); }
+
+  requireOwnHead_(user, parent);        // must exist and be yours
+
+  var map = parentMap_(me);
+
+  // Walking up from the proposed parent must never reach this head.
+  var cur = parent, steps = 0;
+  while (cur) {
+    if (cur === str_(headId)) {
+      fail_('That would put a head inside one of its own sub-heads.', 'bad_request');
+    }
+    cur = map[cur];
+    if (++steps > 50) { break; }
+  }
+
+  if (depthOf_(map, parent) + 1 > MAX_DEPTH) {
+    fail_('Heads can only nest ' + MAX_DEPTH + ' levels deep.', 'bad_request');
+  }
+  return parent;
+}
+
+/** Live sub-heads of a head, used to stop a parent being archived under them. */
+function childrenOf_(user, headId) {
+  return ownedHeads_(user, false).filter(function (h) {
+    return str_(h.parent_id) === str_(headId);
+  });
+}
+
 /** Throws unless this head exists AND belongs to the caller. */
 function requireOwnHead_(user, headId) {
   var ht = table_(TAB.HEADS);
@@ -938,6 +1012,7 @@ function doGetHead(user, headId) {
   head.note_count = notes.length;
 
   var out = { ok: true, head: head, notes: notes, readonly: !mine };
+  if (mine) { out.children = childrenOf_(user, headId); }
   if (!mine) {
     var who = usersIndex_()[ownerId];
     out.owner = who ? { name: who.name, username: who.username } : null;
@@ -967,6 +1042,7 @@ function doCreateHead(user, data) {
   var link = checkLink_(data.link);
   var type = checkFromList_(data.type, 'types', 'type');
   var status = checkFromList_(data.status, 'statuses', 'status') || 'Active';
+  var parent = checkParent_(user, '', data.parent_id);
 
   return withLock_(function () {
     var t = table_(TAB.HEADS);
@@ -974,6 +1050,7 @@ function doCreateHead(user, data) {
     var rec = {
       head_id: newId_('H'),
       owner_id: str_(user.user_id),
+      parent_id: parent,
       created_at: now,
       title: title,
       client: client,
@@ -996,10 +1073,23 @@ function doCreateHead(user, data) {
 function doUpdateHead(user, headId, patch) {
   return withLock_(function () {
     var found = requireOwnHead_(user, headId);
-    var allowed = ['title', 'client', 'type', 'status', 'needs_detail', 'link', 'details', 'archived'];
+    var allowed = ['title', 'client', 'type', 'status', 'needs_detail', 'link',
+                   'details', 'archived', 'parent_id'];
     var write = {};
     allowed.forEach(function (k) { if (patch && k in patch) { write[k] = patch[k]; } });
 
+    if (write.parent_id !== undefined) {
+      write.parent_id = checkParent_(user, headId, write.parent_id);
+    }
+    // Archiving a head with live sub-heads would strand them out of sight.
+    if (yes_(write.archived)) {
+      var kids = childrenOf_(user, headId);
+      if (kids.length) {
+        fail_('That head still has ' + kids.length + ' sub-head' +
+              (kids.length === 1 ? '' : 's') +
+              '. Archive or move them first.', 'bad_request');
+      }
+    }
     if (write.title !== undefined) { write.title = checkTitle_(write.title); }
     if (write.client !== undefined) { write.client = checkClient_(write.client); }
     if (write.link !== undefined) { write.link = checkLink_(write.link); }

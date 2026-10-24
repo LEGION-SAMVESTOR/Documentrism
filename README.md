@@ -151,6 +151,23 @@ Optimistic rows carry a `tmp-…` id and are swapped for the real row on success
 
 ---
 
+## Sub-heads
+
+A head may sit under another, up to `MAX_DEPTH` (4) levels. `parent_id` on
+Heads holds it.
+
+Two things are checked on the way in rather than hoped for: a head can never
+become its own ancestor (the chain is walked upward from the proposed parent),
+and the depth cap is enforced. The picker applies the same rule in the browser
+by banning the head and everything below it.
+
+Archiving a head that still has live sub-heads is refused — they would be
+stranded out of sight — with a message saying to move or archive them first.
+
+In the list, children follow their parent and carry a depth attribute that
+draws the rail and indent; a head whose parent is filtered out is shown at the
+top level rather than disappearing with it.
+
 ## Sharing
 
 One way and read-only. Sharing a head shares that head and every note under
@@ -173,6 +190,13 @@ names only, no birthdays, no hashes.
 
 Shared content is never written to the local cache, which is keyed per account
 and meant for your own work.
+
+A recipient can read **everything** on a shared head: its details, every note,
+and each note's full details. Read-only hides the controls that would change
+something (composer, save, archive, share, image delete) and turns the detail
+fields into plain reading surfaces — still selectable, so the text can be
+copied. The expand button stays, because hiding it was the difference between
+"shared" and "shared but unreadable".
 
 ## Search
 

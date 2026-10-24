@@ -262,7 +262,9 @@
 
         <section class="view" id="view-head">
           <div class="crumb">
-            <button data-nav="heads">Heads</button><span>/</span><span id="crumbTitle" class="muted">—</span>
+            <button data-nav="heads">Heads</button>
+            <span id="crumbParent"></span>
+            <span>/</span><span id="crumbTitle" class="muted">—</span>
           </div>
 
           <div class="ro-banner hide" id="roBanner"></div>
@@ -274,6 +276,15 @@
 
           <div class="split">
             <div>
+              <div class="card hide" id="kidsCard">
+                <div class="card-head">
+                  <span class="eyebrow">Sub-heads</span>
+                  <div class="spacer"></div>
+                  <span class="eyebrow faint" id="kidsCount"></span>
+                </div>
+                <div id="kidsRows"></div>
+              </div>
+
               <div class="card">
                 <div class="card-head">
                   <span class="eyebrow">Notes</span>
@@ -312,7 +323,9 @@
                   <div class="field"><label for="hType">Type</label><select class="sel" id="hType"></select></div>
                   <div class="field"><label for="hStatus">Status</label><select class="sel" id="hStatus"></select></div>
                   <div class="field"><label for="hLink">Link</label><input class="inp" id="hLink" placeholder="https://"></div>
+                  <div class="field"><label for="hParent">Sits under</label><select class="sel" id="hParent"></select></div>
                   <label class="toggle"><input type="checkbox" id="hFlag"> Needs detail</label>
+                  <button class="btn sm wide" id="addSub">+ Add a sub-head</button>
                 </div>
               </div>
 
@@ -399,6 +412,8 @@
           <select class="sel" id="nhClient"></select></div>
         <div class="field"><label for="nhType">Type</label><select class="sel" id="nhType"></select></div>
         <div class="field"><label for="nhStatus">Status</label><select class="sel" id="nhStatus"></select></div>
+        <div class="field span"><label for="nhParent">Sits under (optional)</label>
+          <select class="sel" id="nhParent"></select></div>
         <div class="field"><label for="nhLink">Link</label><input class="inp" id="nhLink" placeholder="https://"></div>
       </div>
       <div class="err" id="nhErr"></div>

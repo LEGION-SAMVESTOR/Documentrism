@@ -222,6 +222,10 @@ button that cuts access immediately.
 Their **Shared** tab shows the people who have shared with them; clicking a
 name opens that person's items.
 
+They can read **all** of it — the head's details, every note, and each note's
+full details (press the ⤢ on a note to open them). They cannot change
+anything.
+
 **Three modes:**
 
 - **Signal** — the default. Dense and calm, for scanning a lot of work.
@@ -245,6 +249,20 @@ ink borders with hard offset shadows, and *Cartoon* is LEDGER's toon look —
 cream paper with dots, chunky outlines and comic lettering.
 
 All of it is saved to your account, so it follows you to another computer.
+
+## Sub-heads
+
+A head can sit under another one, up to four levels deep. Two ways:
+
+- On a head, press **+ Add a sub-head** — the new one is filed under it.
+- In **New head**, pick something in **Sits under**.
+
+To move a head later, use **Sits under** in its Properties panel. In the list,
+sub-heads appear indented under their parent with a ↳, and a parent shows how
+many it has.
+
+You cannot archive a head that still has sub-heads — move or archive those
+first, so nothing gets stranded out of sight.
 
 ## Pictures in notes
 

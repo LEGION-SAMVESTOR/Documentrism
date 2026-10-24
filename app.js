@@ -570,6 +570,38 @@ function emptyState(mark, title, body, action) {
           <p>${esc(body)}</p>${action || ""}</div>`;
 }
 
+/**
+ * Orders heads so each sub-head follows its parent, and tags every row with
+ * its depth. A head whose parent is filtered out (or archived) is shown at the
+ * top level rather than vanishing with it.
+ */
+function nestHeads(rows) {
+  const present = new Set(rows.map(h => h.head_id));
+  const byParent = new Map();
+  rows.forEach(h => {
+    const p = present.has(h.parent_id) ? h.parent_id : "";
+    if (!byParent.has(p)) byParent.set(p, []);
+    byParent.get(p).push(h);
+  });
+
+  const out = [];
+  const walk = (parent, depth) => {
+    (byParent.get(parent) || []).forEach(h => {
+      const kids = byParent.get(h.head_id) || [];
+      out.push({ head: h, depth, kids: kids.length });
+      if (depth < 4) walk(h.head_id, depth + 1);
+    });
+  };
+  walk("", 0);
+
+  // Anything unreachable (a loop in the data) still has to be listed.
+  if (out.length < rows.length) {
+    const shown = new Set(out.map(o => o.head.head_id));
+    rows.forEach(h => { if (!shown.has(h.head_id)) out.push({ head: h, depth: 0, kids: 0 }); });
+  }
+  return out;
+}
+
 function renderHeads() {
   const rows = visibleHeads();
   const box = $("#headsRows");
@@ -590,10 +622,11 @@ function renderHeads() {
     return;
   }
 
-  box.innerHTML = rows.map(h => `
-    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}">
+  box.innerHTML = nestHeads(rows).map(({ head: h, depth, kids }) => `
+    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}" data-depth="${depth}">
       <div>
-        <div class="title">${esc(h.title)}</div>
+        <div class="title">${depth ? `<span class="kidmark">↳</span>` : ""}${esc(h.title)}${
+          kids ? `<span class="kids">${kids} sub</span>` : ""}</div>
         <div class="sub">${h.link ? "↗ link · " : ""}created ${esc(dateOf(h.created_at))}${
           h.needs_detail === "Yes" ? " · needs detail" : ""}${
           h.archived === "Yes" ? " · archived" : ""}</div>
@@ -625,7 +658,7 @@ async function openHead(headId, opts) {
   const known = headRow(headId);
   const cachedNotes = local(notesKey(headId));
   if (known && !opts.quiet) {
-    S.current = { head: Object.assign({}, known), notes: cachedNotes || [] };
+    S.current = { head: Object.assign({}, known), notes: cachedNotes || [], children: [] };
     paintHead();
     if (!cachedNotes) {
       $("#hNotes").innerHTML = `<div class="skeleton"><i></i><i></i><i></i></div>`;
@@ -640,7 +673,7 @@ async function openHead(headId, opts) {
     if (!res || !res.head) { throw new Error("The sheet sent back an empty head."); }
     // Don't let a slow answer overwrite a head the user has since moved on from
     if (S.current && S.current.head.head_id !== headId && opts.quiet) return;
-    S.current = { head: res.head, notes: res.notes };
+    S.current = { head: res.head, notes: res.notes, children: res.children || [] };
     S.readonly = !!res.readonly;
     S.currentOwner = res.owner || null;
     if (!S.readonly) local(notesKey(headId), res.notes);   // never cache someone else's
@@ -663,7 +696,8 @@ function applyReadonly() {
   if (S.readonly) {
     const who = S.currentOwner ? `${S.currentOwner.name} (${S.currentOwner.username})` : "someone else";
     banner.innerHTML = `<span class="dot" style="background:var(--blue)"></span>
-      <span>Shared with you by <b>${esc(who)}</b> — you can read this, not change it.</span>`;
+      <span>Shared with you by <b>${esc(who)}</b> — you can read everything here,
+      including each note's full details. You cannot change any of it.</span>`;
     banner.classList.remove("hide");
   } else {
     banner.classList.add("hide");
@@ -683,6 +717,10 @@ function paintHead() {
   if (!S.editing.has("head-title")) $("#hTitle").value = h.title;
   $("#hFlag").checked = h.needs_detail === "Yes";
   $("#hArchive").textContent = h.archived === "Yes" ? "Restore this head" : "Archive this head";
+
+  fillParentPicker($("#hParent"), h.head_id, h.parent_id || "");
+  renderCrumb(h);
+  renderKids();
 
   fillSelect($("#hClient"), S.lists.clients, { blank: "No client", value: h.client || "" });
   fillSelect($("#hType"), S.lists.types, { blank: "No type", value: h.type || "" });
@@ -706,6 +744,74 @@ function paintHead() {
  * Open editors and their current text are lifted out first and put back
  * afterwards, so a refresh landing mid-sentence is invisible.
  */
+/* --------------------------------------------------------------------------
+   Sub-heads
+   -------------------------------------------------------------------------- */
+
+/**
+ * Everything that could legally be this head's parent: not itself, and not one
+ * of its own descendants.
+ *
+ * headId is "" when creating a new head, which has neither — and the empty
+ * string must NOT seed the banned set, because every top-level head has
+ * parent_id "" and the walk below would then ban the entire tree.
+ */
+function fillParentPicker(el, headId, value) {
+  if (!el) return;
+
+  const banned = new Set();
+  if (headId) {
+    banned.add(headId);
+    let added = true;
+    while (added) {
+      added = false;
+      S.heads.forEach(h => {
+        if (h.parent_id && !banned.has(h.head_id) && banned.has(h.parent_id)) {
+          banned.add(h.head_id);
+          added = true;
+        }
+      });
+    }
+  }
+
+  const choices = S.heads.filter(h => !banned.has(h.head_id) && h.archived !== "Yes");
+  el.innerHTML = `<option value="">Nothing — it's a top-level head</option>` +
+    choices.map(h => `<option value="${esc(h.head_id)}">${esc(h.title)}</option>`).join("");
+  el.value = value || "";
+}
+
+function renderCrumb(h) {
+  const box = $("#crumbParent");
+  if (!box) return;
+  const parent = headRow(h.parent_id);
+  if (!parent) { box.innerHTML = ""; return; }
+  box.innerHTML = `<span>/</span><button class="up" data-up="${esc(parent.head_id)}">${esc(parent.title)}</button>`;
+  on($("[data-up]", box), "click", () => openHead(parent.head_id));
+}
+
+function renderKids() {
+  const card = $("#kidsCard");
+  if (!card) return;
+  const kids = (S.current && S.current.children) || [];
+  if (S.readonly || !kids.length) { card.classList.add("hide"); return; }
+
+  card.classList.remove("hide");
+  $("#kidsCount").textContent = kids.length + (kids.length === 1 ? " sub-head" : " sub-heads");
+  $("#kidsRows").innerHTML = kids.map(h => `
+    <button class="trow" data-kid="${esc(h.head_id)}" data-depth="0">
+      <div>
+        <div class="title">${esc(h.title)}</div>
+        <div class="sub">${h.note_count} note${h.note_count === 1 ? "" : "s"} · created ${esc(dateOf(h.created_at))}</div>
+      </div>
+      <div>${h.client ? `<span class="chip client">${esc(h.client)}</span>` : ""}</div>
+      <div class="c-type">${h.type ? `<span class="chip">${esc(h.type)}</span>` : ""}</div>
+      <div>${statusChip(h.status)}</div>
+      <div class="r num c-notes">${h.note_count}</div>
+      <div class="r c-when">${esc(ago(h.updated_at || h.created_at))}</div>
+    </button>`).join("");
+  $$("#kidsRows [data-kid]").forEach(el => on(el, "click", () => openHead(el.dataset.kid)));
+}
+
 function renderNotes() {
   // A hole in this array must not take the whole timeline down with it.
   const notes = (S.current.notes || []).filter(Boolean);
@@ -869,7 +975,13 @@ function wireNotes(scope) {
 
     // Typing in a note marks it unsaved, which holds off background refreshes
     // until it is saved or closed.
-    $$("[data-f]", el).forEach(f => on(f, "input", () => markEditing("note:" + id, true)));
+    if (S.readonly) {
+      // Readable, not editable. Marking them readonly rather than disabled
+      // keeps the text selectable so it can be copied.
+      $$("[data-f]", el).forEach(f => { f.readOnly = true; f.disabled = f.type === "checkbox"; });
+    } else {
+      $$("[data-f]", el).forEach(f => on(f, "input", () => markEditing("note:" + id, true)));
+    }
 
     $$(".shot .kill", el).forEach(k => on(k, "click", ev => {
       ev.stopPropagation();
@@ -1510,7 +1622,8 @@ async function createHeadFromDialog() {
     client: $("#nhClient").value.trim(),
     type: $("#nhType").value,
     status: $("#nhStatus").value,
-    link: $("#nhLink").value.trim()
+    link: $("#nhLink").value.trim(),
+    parent_id: $("#nhParent").value
   };
   closeDialog("#nhScrim");
   sync("saving", "Creating head");
@@ -1865,7 +1978,10 @@ function wire() {
   on($("#qaSave"), "click", quickSave);
   on($("#qaText"), "keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); quickSave(); } });
 
-  on($("#btnNewHead"), "click", () => openDialog("#nhScrim", "#nhTitle"));
+  on($("#btnNewHead"), "click", () => {
+    fillParentPicker($("#nhParent"), "", "");
+    openDialog("#nhScrim", "#nhTitle");
+  });
   on($("#nhSave"), "click", createHeadFromDialog);
   on($("#nhTitle"), "keydown", e => { if (e.key === "Enter") { e.preventDefault(); createHeadFromDialog(); } });
 
@@ -1921,6 +2037,24 @@ function wire() {
     patchHead({ link: v });
   });
   on($("#hFlag"), "change", e => patchHead({ needs_detail: e.target.checked ? "Yes" : "No" }));
+  on($("#hParent"), "change", async e => {
+    const to = e.target.value;
+    try {
+      await API.call("updateHead", { head_id: S.current.head.head_id, patch: { parent_id: to } });
+      toast(to ? "Moved under " + (headRow(to) || {}).title : "Moved to the top level.", "good");
+      await reload();
+      openHead(S.current.head.head_id);
+    } catch (err) {
+      toast(err.message, "bad");
+      e.target.value = S.current.head.parent_id || "";
+    }
+  });
+  on($("#addSub"), "click", () => {
+    if (!S.current) return;
+    // pre-pick the head you came from, which is nearly always what you meant
+    fillParentPicker($("#nhParent"), "", S.current.head.head_id);
+    openDialog("#nhScrim", "#nhTitle");
+  });
   /* the long details box is the easiest place to lose work, so it says so */
   on($("#hDetails"), "input", () => markEditing("head-details", true));
   on($("#hLink"), "input", () => markEditing("head-link", true));

@@ -904,6 +904,30 @@ a:hover{text-decoration:underline}
 .trow .r{font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--ink-soft)}
 .trow.is-arch .title{color:var(--ink-soft)}
 
+/* sub-heads ------------------------------------------------------------------
+   Depth is shown with a rail and a tick rather than plain indentation, so a
+   child still reads as a row of the same table and not a different thing. */
+.trow[data-depth="1"]{padding-left:40px}
+.trow[data-depth="2"]{padding-left:62px}
+.trow[data-depth="3"]{padding-left:84px}
+.trow[data-depth]:not([data-depth="0"])::before{
+  content:"";position:absolute;top:0;bottom:0;
+  border-left:1px solid var(--line);
+}
+.trow[data-depth="1"]::before{left:26px}
+.trow[data-depth="2"]::before{left:48px}
+.trow[data-depth="3"]::before{left:70px}
+.trow{position:relative}
+.trow .kidmark{color:var(--ink-faint);margin-right:6px;font-size:11px}
+.trow .kids{
+  font-size:10px;color:var(--ink-faint);border:1px solid var(--line);
+  border-radius:99px;padding:0 6px;margin-left:8px;white-space:nowrap;
+}
+[data-style="toon"] .trow .kids,[data-style="brutal"] .trow .kids{border-width:2px}
+
+.crumb .up{color:var(--ink-soft)}
+.crumb .up:hover{color:var(--accent)}
+
 /* head page ----------------------------------------------------------------- */
 .crumb{
   display:flex;align-items:center;gap:8px;margin-bottom:14px;
@@ -1094,14 +1118,33 @@ body.readonly .composer,
 body.readonly #hDetailSave,
 body.readonly #hExpand,
 body.readonly #hArchive,
-body.readonly .note-acts,
 body.readonly #shareOpen{display:none !important}
+
+/* Reading someone else's work means reading ALL of it, so the expand button
+   stays — only the buttons that would change something go. */
+body.readonly .note-acts{opacity:1}
+body.readonly .note-acts [data-act="archive"],
+body.readonly .note-acts [data-act="share"],
+body.readonly .note-detail [data-act],
+body.readonly .note-detail .toggle,
+body.readonly .shot .kill{display:none !important}
+
 body.readonly .title-in,
-body.readonly .details-ta,
 body.readonly .props .sel,
 body.readonly .props .inp,
 body.readonly .props .toggle{pointer-events:none;opacity:.72}
 body.readonly .title-in:hover{background:transparent}
+
+/* The detail fields become plain reading surfaces, not dead form controls. */
+body.readonly .details-ta,
+body.readonly .note-detail .ta,
+body.readonly .note-detail .inp,
+body.readonly .note-detail .sel{
+  pointer-events:none;background:transparent;border-color:transparent;
+  padding-left:0;resize:none;color:var(--ink);
+}
+body.readonly .note-detail .field > label{color:var(--ink-faint)}
+body.readonly .details-ta{background:var(--panel-2);padding-left:16px}
 
 /* share dialog -------------------------------------------------------------- */
 .share-list{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
@@ -1260,7 +1303,13 @@ body.readonly .title-in:hover{background:transparent}
    -------------------------------------------------------------------------- */
 .bgfx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .bgfx i{position:absolute;display:block;opacity:0}
-.shell,.gate,.scrim,.toasts,.lightbox,.boot{position:relative;z-index:1}
+
+/* Only the in-flow shell needs lifting above the backdrop. The overlays are
+   already position:fixed with their own stacking order (scrim 100, toasts 200,
+   lightbox 260, gate 300, boot 400) — giving them position:relative here took
+   them out of the viewport and dropped them into the page flow, which broke
+   every dialog in the app. */
+.shell{position:relative;z-index:1}
 
 /* ember — two slow coals breathing under the page */
 [data-mode="ember"] .bgfx i:nth-child(1),
