@@ -16,8 +16,9 @@
 const S = {
   user: null,
   prefs: {
-    mode: "signal", theme: "dark", style: "plain", accent: "default",
-    font: "mono", fsize: "m", density: "comfortable", anim: "on", custom_css: ""
+    mode: "signal", layout: "classic", theme: "dark", style: "plain",
+    accent: "default", font: "mono", fsize: "m", density: "comfortable",
+    anim: "on", custom_css: ""
   },
   // Appearance is the one thing the user changes faster than the server can be
   // told. While a change is unsaved or in flight, a refresh must leave it alone
@@ -192,7 +193,8 @@ function sync(state, text) {
 /* ==========================================================================
    Skin — mode, theme, custom CSS
    ========================================================================== */
-const SKIN_KEYS = ["mode", "theme", "style", "accent", "font", "fsize", "density", "anim"];
+const SKIN_KEYS = ["mode", "layout", "theme", "style", "accent", "font",
+                   "fsize", "density", "anim"];
 
 function applySkin() {
   const d = document.documentElement.dataset;
@@ -204,6 +206,7 @@ function applySkin() {
   const t = $("#stTheme");
   if (t) t.textContent = S.prefs.theme === "dark" ? "Dark" : "Light";
   $$("[data-mode-pick]").forEach(b => b.classList.toggle("on", b.dataset.modePick === S.prefs.mode));
+  set("#stLayout", S.prefs.layout);
   set("#stStyle", S.prefs.style);
   set("#stAccent", S.prefs.accent);
   set("#stFont", S.prefs.font);
@@ -2350,6 +2353,7 @@ function wireSettings() {
     S.prefs[key] = e.target.value;
     touchPrefs();
   });
+  bind("#stLayout", "layout");
   bind("#stStyle", "style");
   bind("#stAccent", "accent");
   bind("#stFont", "font");

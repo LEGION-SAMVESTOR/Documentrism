@@ -31,7 +31,7 @@ var VERSION = '2.3.0';
  * that comes up every time the front end moves ahead of the backend.
  */
 var CAPABILITIES = ['accounts', 'sharing', 'images', 'validation', 'search',
-                    'subheads', 'notelinks', 'notetree'];
+                    'subheads', 'notelinks', 'notetree', 'layouts'];
 
 /** How deep heads may nest. A head, its sub-heads, and two more levels. */
 var MAX_DEPTH = 4;
@@ -59,8 +59,8 @@ var COLS = {
              'created_at', 'text', 'type', 'link', 'details', 'needs_detail',
              'images', 'updated_at', 'archived'],
   Lists:    ['clients', 'types', 'statuses'],
-  Prefs:    ['owner_id', 'mode', 'theme', 'style', 'accent', 'font', 'fsize',
-             'density', 'anim', 'custom_css', 'updated_at'],
+  Prefs:    ['owner_id', 'mode', 'layout', 'theme', 'style', 'accent', 'font',
+             'fsize', 'density', 'anim', 'custom_css', 'updated_at'],
   Shares:   ['share_id', 'owner_id', 'target_id', 'kind', 'item_id',
              'created_at', 'revoked']
 };
@@ -712,10 +712,16 @@ function doLogout(token) {
 
 /** One place that knows what a preference may be. Anything else is ignored. */
 var PREF_CHOICES = {
+  /* A theme is colour and type. A layout is structure. They are picked
+     separately, so any theme can wear any layout. */
   mode:    ['signal', 'terminal', 'paper', 'ember', 'nocturne', 'runic',
-            'royal', 'blackbox', 'sleek'],
+            'royal', 'blackbox', 'sleek', 'toon'],
+  layout:  ['classic', 'topbar', 'reader', 'dense', 'cards', 'board',
+            'console', 'zen', 'magazine', 'studio'],
   theme:   ['dark', 'light'],
-  style:   ['plain', 'glass', 'neo', 'flat', 'brutal', 'toon'],
+  /* Surface treatment only — how a panel is made. Cartoon moved to the theme
+     axis, where a cream palette and comic lettering actually belong. */
+  style:   ['plain', 'glass', 'neo', 'flat', 'brutal'],
   accent:  ['default', 'red', 'emerald', 'amber', 'violet', 'magenta', 'crimson'],
   font:    ['mono', 'sans', 'serif'],
   fsize:   ['s', 'm', 'l'],
@@ -725,8 +731,9 @@ var PREF_CHOICES = {
 
 function defaultPrefs_() {
   return {
-    mode: 'signal', theme: 'dark', style: 'plain', accent: 'default',
-    font: 'mono', fsize: 'm', density: 'comfortable', anim: 'on', custom_css: ''
+    mode: 'signal', layout: 'classic', theme: 'dark', style: 'plain',
+    accent: 'default', font: 'mono', fsize: 'm', density: 'comfortable',
+    anim: 'on', custom_css: ''
   };
 }
 

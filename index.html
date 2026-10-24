@@ -596,7 +596,29 @@
     <div class="dialog-head"><span class="eyebrow">Appearance</span><div class="spacer"></div>
       <span class="eyebrow faint" id="stStatus">Saved to your account</span></div>
     <div class="dialog-body">
-      <div class="eyebrow" style="margin-bottom:10px">Mode</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+        <div class="eyebrow">Layout</div>
+        <span class="faint" style="font-size:10.5px">how the page is arranged</span>
+      </div>
+      <div class="field" style="margin-bottom:22px">
+        <select class="sel" id="stLayout">
+          <option value="classic">Classic — sidebar, command bar, table</option>
+          <option value="topbar">Topbar — navigation across the top, centred</option>
+          <option value="reader">Reader — one narrow column, no panels</option>
+          <option value="dense">Dense — as much on screen as will fit</option>
+          <option value="cards">Cards — heads as a grid of tiles</option>
+          <option value="board">Board — fewer, larger cards</option>
+          <option value="console">Console — command line first, all square</option>
+          <option value="zen">Zen — almost no chrome, a lot of room</option>
+          <option value="magazine">Magazine — editorial, big titles</option>
+          <option value="studio">Studio — wide rail, detail panel alongside</option>
+        </select>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+        <div class="eyebrow">Theme</div>
+        <span class="faint" style="font-size:10.5px">colour and type only</span>
+      </div>
       <div class="mode-grid" id="modeGrid">
         <button class="mode-card" data-mode-pick="signal">
           <div class="nm">Signal</div>
@@ -643,6 +665,11 @@
           <div class="nm">Sleek <span class="faint">· animated</span></div>
           <div class="ds">Near-monochrome and quiet. One pale light, almost subliminal.</div>
           <div class="swatches"><i style="background:#08090b"></i><i style="background:#101216"></i><i style="background:#e8edf5"></i><i style="background:#7d8695"></i></div>
+        </button>
+        <button class="mode-card" data-mode-pick="toon">
+          <div class="nm">Cartoon</div>
+          <div class="ds">Cream paper with dots, thick ink outlines and comic lettering.</div>
+          <div class="swatches"><i style="background:#fbeed2"></i><i style="background:#fffdf6"></i><i style="background:#14110f"></i><i style="background:#c8202f"></i></div>
         </button>
       </div>
 
@@ -697,7 +724,6 @@
             <option value="neo">Neo — soft extruded plastic</option>
             <option value="flat">Flat — hairlines, no depth</option>
             <option value="brutal">Brutal — heavy ink and hard shadows</option>
-            <option value="toon">Cartoon — cream paper and outlines</option>
           </select>
         </div>
         <div class="field span">

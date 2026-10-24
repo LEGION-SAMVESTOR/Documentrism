@@ -309,7 +309,38 @@ A cell holds about 50,000 characters, so pictures cannot live in the sheet. The
 **This needs a new Drive permission**, so authorization is requested again the
 first time `setupSheet` runs after this change.
 
-## Design modes
+## Layout and theme are separate
+
+They used to be one thing, which meant picking a palette also moved the page
+around, and no combination was anyone's actual choice. Now:
+
+- **Theme** (`data-mode`) sets colour and type. It never moves anything.
+- **Layout** (`data-layout`) sets structure. It never sets a colour.
+
+Ten layouts, each built from the same four levers — `--inner-max`,
+`--row-pad`, `--pad`, `--rail-w` — plus whatever named structural change it
+needs:
+
+| Layout | What it is |
+| --- | --- |
+| `classic` | Left rail, command bar, table. The default. |
+| `topbar` | Navigation across the top, content centred. |
+| `reader` | One 700px column, no panels, titles only. |
+| `dense` | Full width, 5px rows, as much on screen as fits. |
+| `cards` | Heads as a grid of tiles. |
+| `board` | Fewer, larger cards with more on each. |
+| `console` | Command line first, everything square. |
+| `zen` | Icon rail, no chrome, a lot of room. |
+| `magazine` | Editorial: 27px titles, wide margins, rules. |
+| `studio` | Wide rail with the detail panel alongside, from 1010px up. |
+
+**Layout outranks theme on purpose.** Every layout selector is written
+`html[data-layout="…"]`, which beats a bare `[data-mode="…"]` on specificity.
+Without that, a theme that draws a panel (Cartoon's ink outline) fought a
+layout that removes panels (Magazine), and whichever came later in the file
+won — exactly the coupling this split was meant to end.
+
+## Themes
 
 Three modes, chosen per person and stored on their account, so the choice
 follows them to another computer.
