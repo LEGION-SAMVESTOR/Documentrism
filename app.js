@@ -19,6 +19,12 @@ const S = {
     mode: "signal", theme: "dark", style: "plain", accent: "default",
     font: "mono", fsize: "m", density: "comfortable", anim: "on", custom_css: ""
   },
+  // Appearance is the one thing the user changes faster than the server can be
+  // told. While a change is unsaved or in flight, a refresh must leave it alone
+  // — otherwise the background catch-up puts the old look back and it reads as
+  // "the theme keeps changing by itself".
+  prefsDirty: false,
+  prefsSaving: 0,
   shares: { incoming: [], outgoing: [] },
   sharedPerson: null,      // whose shared items are open, if any
   readonly: false,         // the head on screen belongs to someone else
@@ -150,12 +156,17 @@ function ago(iso) {
 }
 
 /* --- chrome --------------------------------------------------------------- */
-function toast(msg, kind) {
+function toast(msg, kind, action) {
   const el = document.createElement("div");
   el.className = "toast " + (kind || "");
-  el.innerHTML = `<span class="dot"></span><span>${esc(msg)}</span>`;
+  el.innerHTML = `<span class="dot"></span><span>${esc(msg)}</span>` +
+    (action ? `<button class="linkish" style="font-size:11px">${esc(action.label)}</button>` : "");
   $("#toasts").appendChild(el);
-  setTimeout(() => el.remove(), 4200);
+  if (action) {
+    on(el.querySelector("button"), "click", () => { el.remove(); action.run(); });
+  }
+  setTimeout(() => el.remove(), action ? 8000 : 4200);
+  return el;
 }
 
 function showErr(sel, message) {
@@ -668,7 +679,8 @@ function noteHtml(n) {
 function shotsHtml(n) {
   const ids = imageIdsOf(n);
   if (!ids.length) return "";
-  return `<div class="shots">` + ids.map(id => `
+  const many = ids.length > 1 ? " many" : "";
+  return `<div class="shots big${many}">` + ids.map(id => `
     <div class="shot" data-img="${esc(id)}" data-note="${esc(n.note_id)}">
       <span class="ph">loading</span>
       <span class="kill" title="Remove this image">✕</span>
@@ -739,6 +751,11 @@ function saveNoteFromUi(el, id) {
 }
 
 function archiveNoteUi(id) {
+  // Keep a copy so Undo can put it back where it was, not just un-archive it.
+  const note = findNote(id);
+  const snapshot = note ? Object.assign({}, note) : null;
+  const wasInbox = S.inbox.some(n => n.note_id === id);
+
   if (S.current) {
     S.current.notes = S.current.notes.filter(n => n.note_id !== id);
     renderNotes();
@@ -747,7 +764,23 @@ function archiveNoteUi(id) {
   renderInbox();
   paintStats();
   API.enqueue({ action: "archiveNote", payload: { note_id: id } });
-  toast("Note archived. The row stays in the sheet.", "good");
+
+  toast("Note archived.", "good", {
+    label: "Undo",
+    run: () => {
+      if (snapshot) {
+        if (wasInbox) { S.inbox.unshift(snapshot); renderInbox(); }
+        else if (S.current && snapshot.head_id === S.current.head.head_id) {
+          S.current.notes.push(snapshot);
+          S.current.notes.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+          renderNotes();
+        }
+        paintStats();
+      }
+      API.enqueue({ action: "updateNote", payload: { note_id: id, patch: { archived: "No" } } });
+      toast("Put back.", "good");
+    }
+  });
 }
 
 function withHeadings(current, type) {
@@ -777,12 +810,53 @@ function patchHead(patch, repaint) {
 /** Images pasted or dropped before the note exists wait here for its id. */
 let pendingShots = [];
 
+/**
+ * Shows what is about to be attached, the way a chat app does: small chips
+ * under the box, each removable before you send. Previews come from the local
+ * file, so nothing is uploaded until the note is saved.
+ */
 function showPending() {
-  const hint = $("#hNoteText");
-  if (!hint) return;
-  hint.placeholder = pendingShots.length
-    ? `${pendingShots.length} image${pendingShots.length === 1 ? "" : "s"} will attach — now write the line.`
-    : "What did you just do? One line is enough.";
+  const box = $("#pendShots");
+  if (!box) return;
+
+  if (!pendingShots.length) {
+    box.innerHTML = "";
+    box.classList.add("hide");
+    return;
+  }
+  box.classList.remove("hide");
+  box.innerHTML = `<div class="pend-label">${pendingShots.length} image${
+    pendingShots.length === 1 ? "" : "s"} will attach when you save</div>` +
+    pendingShots.map((f, i) => `
+      <div class="shot" data-pend="${i}">
+        <span class="ph">…</span>
+        <span class="kill" title="Don't attach this one">✕</span>
+      </div>`).join("");
+
+  pendingShots.forEach((file, i) => {
+    const cell = $(`[data-pend="${i}"]`, box);
+    if (!cell) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const kill = cell.querySelector(".kill");
+      cell.innerHTML = `<img src="${reader.result}" alt="">`;
+      if (kill) cell.appendChild(kill);
+      on(kill, "click", ev => {
+        ev.stopPropagation();
+        pendingShots.splice(i, 1);
+        showPending();
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function queueShots(files) {
+  const imgs = Array.from(files).filter(f => /^image\//.test(f.type));
+  if (!imgs.length) return 0;
+  pendingShots = pendingShots.concat(imgs).slice(0, 8);
+  showPending();
+  return imgs.length;
 }
 
 function addNoteHere() {
@@ -1521,29 +1595,58 @@ const anyDialogOpen = () => $$(".scrim.on").length > 0;
 /* ==========================================================================
    Preferences
    ========================================================================== */
+/**
+ * Every appearance control calls this. It paints at once and saves shortly
+ * after, so there is no such thing as an unsaved look that a refresh can undo.
+ */
+let prefsTimer = null;
+
+function touchPrefs() {
+  S.prefsDirty = true;
+  applySkin();
+  clearTimeout(prefsTimer);
+  prefsTimer = setTimeout(savePrefs, 700);
+}
+
 function savePrefs() {
+  clearTimeout(prefsTimer);
   const problem = cssProblem(S.prefs.custom_css);
   if (problem) { showErr("#cssErr", problem); return false; }
   clearErr("#cssErr");
-  API.enqueue({ action: "savePrefs", payload: { prefs: S.prefs } });
+
+  S.prefsSaving++;
+  S.prefsDirty = false;
+  const settle = () => { S.prefsSaving = Math.max(0, S.prefsSaving - 1); };
+
+  API.enqueue({
+    action: "savePrefs",
+    payload: { prefs: Object.assign({}, S.prefs) },
+    done: settle,
+    fail: () => { settle(); S.prefsDirty = true; }
+  });
   return true;
+}
+
+/** True while the server's copy must not be allowed to win. */
+function prefsBusy() {
+  return S.prefsDirty || S.prefsSaving > 0 || $("#stScrim").classList.contains("on");
 }
 
 function wireSettings() {
   $$("[data-mode-pick]").forEach(b => on(b, "click", () => {
     S.prefs.mode = b.dataset.modePick;
-    applySkin();
+    touchPrefs();
   }));
 
   on($("#stTheme"), "click", () => {
     S.prefs.theme = S.prefs.theme === "dark" ? "light" : "dark";
-    applySkin();
+    touchPrefs();
   });
 
-  // Every option previews immediately; Save writes it to the account.
+  // Every option paints at once and saves itself a moment later.
   const bind = (sel, key) => on($(sel), "change", e => {
     S.prefs[key] = e.target.value;
-    applySkin();
+    touchPrefs();
   });
   bind("#stStyle", "style");
   bind("#stAccent", "accent");
@@ -1552,7 +1655,7 @@ function wireSettings() {
   bind("#stDensity", "density");
   on($("#stAnim"), "change", e => {
     S.prefs.anim = e.target.checked ? "on" : "off";
-    applySkin();
+    touchPrefs();
   });
 
   // Preview as they type, but never store something the server would refuse.
@@ -1563,6 +1666,9 @@ function wireSettings() {
     clearErr("#cssErr");
     S.prefs.custom_css = css;
     applyCustomCss(css);
+    S.prefsDirty = true;
+    clearTimeout(prefsTimer);
+    prefsTimer = setTimeout(savePrefs, 1200);   // longer: they are still typing
   });
 
   on($("#cssExample"), "click", () => {
@@ -1575,7 +1681,7 @@ function wireSettings() {
   });
 
   on($("#stSave"), "click", () => {
-    if (savePrefs()) { toast("Appearance saved to your account.", "good"); closeDialog("#stScrim"); }
+    if (savePrefs()) { closeDialog("#stScrim"); }
   });
 }
 
@@ -1611,22 +1717,14 @@ function wire() {
 
   /* paste or drop a picture straight into the note you are writing */
   on($("#hNoteText"), "paste", e => {
-    const files = Array.from(e.clipboardData?.files || []).filter(f => /^image\//.test(f.type));
-    if (!files.length) return;
+    const files = Array.from(e.clipboardData?.files || []);
+    if (!files.some(f => /^image\//.test(f.type))) return;
     e.preventDefault();
-    pendingShots = pendingShots.concat(files);
-    showPending();
-    toast(`${files.length} image${files.length === 1 ? "" : "s"} ready — write the line and press Enter.`, "");
+    queueShots(files);
   });
-  const composer = $(".composer");
-  ["dragover", "drop"].forEach(ev => on(composer, ev, e => {
+  ["dragover", "drop"].forEach(ev => on($(".composer"), ev, e => {
     e.preventDefault();
-    if (ev !== "drop") return;
-    const files = Array.from(e.dataTransfer?.files || []).filter(f => /^image\//.test(f.type));
-    if (!files.length) return;
-    pendingShots = pendingShots.concat(files);
-    showPending();
-    toast(`${files.length} image${files.length === 1 ? "" : "s"} ready — write the line and press Enter.`, "");
+    if (ev === "drop") queueShots(e.dataTransfer?.files || []);
   }));
 
   /* full-size image viewer */
@@ -1666,10 +1764,22 @@ function wire() {
   on($("#hArchive"), "click", () => {
     const h = S.current.head;
     if (h.archived === "Yes") { patchHead({ archived: "No" }); return; }
+    const id = h.head_id;
+    const snapshot = Object.assign({}, h);
     patchHead({ archived: "Yes" }, false);
-    if (!S.filters.archived) S.heads = S.heads.filter(x => x.head_id !== h.head_id);
+    if (!S.filters.archived) S.heads = S.heads.filter(x => x.head_id !== id);
     renderHeads(); paintStats(); show("heads");
-    toast("Head archived. Nothing was deleted from the sheet.", "good");
+
+    toast("Head archived.", "good", {
+      label: "Undo",
+      run: () => {
+        snapshot.archived = "No";
+        if (!S.heads.some(x => x.head_id === id)) S.heads.unshift(snapshot);
+        renderHeads(); paintStats();
+        API.enqueue({ action: "updateHead", payload: { head_id: id, patch: { archived: "No" } } });
+        toast("Put back.", "good");
+      }
+    });
   });
 
   on($("#btnRefresh"), "click", () => reload({ loud: true }));
@@ -1735,7 +1845,9 @@ async function reload(opts) {
   try {
     const data = await API.call("bootstrap");
     S.user = data.user;
-    S.prefs = Object.assign(S.prefs, data.prefs || {});
+    // Never let a refresh overwrite a look the user is in the middle of
+    // choosing, or one whose save has not landed yet.
+    if (!prefsBusy()) { S.prefs = Object.assign(S.prefs, data.prefs || {}); }
     S.lists = data.lists;
     S.inbox = data.inbox;
     S.heads = data.heads;

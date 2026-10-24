@@ -273,6 +273,7 @@
                     <textarea class="ta" id="hNoteText" rows="2" placeholder="What did you just do? One line is enough."></textarea>
                     <button class="btn pri" id="hNoteAdd">Add</button>
                   </div>
+                  <div class="shots pend hide" id="pendShots"></div>
                   <div class="hint">Enter saves · Shift + Enter makes a new line · paste or drop an image to attach it</div>
                 </div>
                 <div class="timeline" id="hNotes"></div>
@@ -430,7 +431,7 @@
 <div class="scrim" id="stScrim">
   <div class="dialog wide" role="dialog" aria-modal="true" aria-label="Appearance">
     <div class="dialog-head"><span class="eyebrow">Appearance</span><div class="spacer"></div>
-      <span class="eyebrow faint">Saved to your account</span></div>
+      <span class="eyebrow faint" id="stStatus">Saved to your account</span></div>
     <div class="dialog-body">
       <div class="eyebrow" style="margin-bottom:10px">Mode</div>
       <div class="mode-grid" id="modeGrid">
@@ -530,9 +531,8 @@
       </div>
     </div>
     <div class="dialog-foot">
-      <span class="hint">Changes preview as you type</span><div class="spacer"></div>
-      <button class="btn ghost" data-close>Close</button>
-      <button class="btn pri" id="stSave">Save appearance</button>
+      <span class="hint">Saved to your account as you change it</span><div class="spacer"></div>
+      <button class="btn pri" id="stSave">Done</button>
     </div>
   </div>
 </div>

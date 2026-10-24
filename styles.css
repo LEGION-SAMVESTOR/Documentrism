@@ -783,30 +783,49 @@ a:hover{text-decoration:underline}
 .inbox-item .mover{display:flex;gap:8px;align-items:center;flex:0 0 auto;width:300px}
 @media (max-width:860px){.inbox-item{flex-direction:column;gap:12px}.inbox-item .mover{width:100%}}
 
-/* images -------------------------------------------------------------------- */
-.shots{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+/* images --------------------------------------------------------------------
+   Two sizes on purpose. While you are composing, pictures are small chips you
+   can glance at and remove — the note text is still the thing you are writing.
+   Once the note is saved the picture IS part of the entry, so it is shown at a
+   size you can actually read, the way a chat app does.
+   -------------------------------------------------------------------------- */
+.shots{display:flex;flex-wrap:wrap;gap:10px;margin-top:11px}
+
 .shot{
-  position:relative;width:104px;height:78px;border-radius:var(--radius-xs);
-  overflow:hidden;border:1px solid var(--line);background:var(--panel-2);
+  position:relative;border-radius:var(--radius-sm);overflow:hidden;
+  border:1px solid var(--line);background:var(--panel-2);
   display:flex;align-items:center;justify-content:center;cursor:zoom-in;
 }
 [data-style="toon"] .shot,[data-style="brutal"] .shot{border:2.5px solid var(--ink-strong)}
-.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.shot img{display:block;width:100%;height:100%;object-fit:cover}
 .shot .ph{font-size:10px;color:var(--ink-faint);letter-spacing:.1em}
 .shot .kill{
-  position:absolute;top:3px;right:3px;width:19px;height:19px;border-radius:50%;
-  background:rgba(8,10,14,.74);color:#fff;font-size:11px;line-height:1;
-  display:none;align-items:center;justify-content:center;
+  position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:50%;
+  background:rgba(8,10,14,.74);color:#fff;font-size:12px;line-height:1;
+  display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);
 }
-.shot:hover .kill{display:flex}
+.shot:hover .kill,.shot:focus-within .kill{display:flex}
 body.readonly .shot .kill{display:none !important}
 .shot.broken{cursor:default}
 
-.shot-drop{
-  display:flex;align-items:center;gap:10px;margin-top:10px;
-  font-size:10.5px;color:var(--ink-faint);
+/* saved into a note — big enough to read without opening it */
+.shots.big .shot{width:min(100%,420px);max-height:320px}
+.shots.big .shot img{height:auto;max-height:320px;object-fit:contain;background:var(--panel-2)}
+/* two or more sit side by side and crop, so a long note is not all pictures */
+.shots.big.many .shot{width:min(calc(50% - 5px),260px);height:190px}
+.shots.big.many .shot img{height:100%;object-fit:cover}
+@media (max-width:620px){
+  .shots.big.many .shot{width:100%;height:210px}
 }
-.shot-drop input[type="file"]{display:none}
+
+/* waiting in the composer — small chips */
+.shots.pend{margin-top:12px}
+.shots.pend .shot{width:62px;height:62px;cursor:default;border-radius:var(--radius-xs)}
+.shots.pend .shot .kill{display:flex;width:18px;height:18px;top:2px;right:2px;font-size:10px}
+.shots.pend .shot img{object-fit:cover}
+.pend-label{
+  width:100%;font-size:10.5px;color:var(--ink-faint);letter-spacing:.04em;margin-bottom:-2px;
+}
 
 /* full-size viewer */
 .lightbox{
