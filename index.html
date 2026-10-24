@@ -3,8 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Documentrism — log your work in seconds, add the detail later.">
 <title>Documentrism</title>
+<meta name="description" content="Log your work in seconds, add the detail later. A personal work journal kept in your own Google Sheet.">
+<meta name="application-name" content="Documentrism">
+<meta name="author" content="Dilpreet Singh">
+<meta name="color-scheme" content="dark light">
+<!-- matches the ground of the default mode, so the browser chrome blends in -->
+<meta name="theme-color" content="#07090d">
+
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="Documentrism">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- A link to this app should never be followed into by a search engine or
+     unfurled with someone's work in the preview. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Documentrism">
+<meta property="og:title" content="Documentrism">
+<meta property="og:description" content="Log your work in seconds, add the detail later.">
+<meta property="og:image" content="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Fredoka:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Luckiest+Guy&display=swap" rel="stylesheet">
@@ -141,7 +163,7 @@
 
     <div class="rail-body">
       <div class="rail-group">
-        <button class="btn pri wide" id="qaOpen">+ Quick note</button>
+        <button class="btn pri wide" id="qaOpen" title="Quick note (Ctrl K)">+<span> Quick note</span></button>
       </div>
 
       <div class="rail-group">
@@ -170,27 +192,31 @@
         <div class="statline"><span class="k">Search</span><span class="k faint">/</span></div>
         <div class="statline"><span class="k">New head</span><span class="k faint">Ctrl J</span></div>
         <div class="statline"><span class="k">Appearance</span><span class="k faint">Ctrl ,</span></div>
+        <div class="statline"><span class="k">Hide sidebar</span><span class="k faint">Ctrl B</span></div>
       </div>
     </div>
 
     <div class="rail-foot">
       <div class="row">
-        <button class="btn sm" id="btnRefresh">Refresh</button>
+        <button class="btn sm" id="btnRefresh" title="Refresh">⟳<span> Refresh</span></button>
       </div>
       <div class="row">
-        <button class="btn sm ghost" id="btnSettings">Appearance</button>
-        <button class="btn sm ghost" id="btnSignOut">Sign out</button>
+        <button class="btn sm ghost" id="btnSettings" title="Appearance (Ctrl ,)">◐<span> Appearance</span></button>
+        <button class="btn sm ghost" id="btnSignOut" title="Sign out">⏻<span> Sign out</span></button>
       </div>
     </div>
   </aside>
 
   <main class="work">
     <div class="cmdbar">
+      <button class="btn sm ghost" id="railCollapse" title="Hide or show the sidebar (Ctrl B)" aria-label="Toggle sidebar">☰</button>
       <button class="btn sm ghost rail-toggle" id="railToggle">☰</button>
       <div class="search">
         <span class="ic">⌕</span>
-        <input class="inp" id="search" type="search" placeholder="Search heads and notes" autocomplete="off">
+        <input class="inp" id="search" type="search" placeholder="Search heads and notes"
+               autocomplete="off" role="combobox" aria-expanded="false" aria-controls="sugg">
         <kbd>/</kbd>
+        <div class="sugg" id="sugg" role="listbox" aria-label="Search results"></div>
       </div>
       <div class="spacer"></div>
       <div class="sync" id="sync" data-state="idle">
@@ -495,6 +521,23 @@
       <span class="hint">Only the title is required</span><div class="spacer"></div>
       <button class="btn ghost" data-close>Cancel</button>
       <button class="btn pri" id="nhSave">Create head</button>
+    </div>
+  </div>
+</div>
+
+<!-- confirm ----------------------------------------------------------- -->
+<div class="scrim" id="cfScrim">
+  <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle">
+    <div class="dialog-head"><span class="eyebrow" id="cfKind">Confirm</span></div>
+    <div class="dialog-body">
+      <h3 class="cf-title" id="cfTitle">Are you sure?</h3>
+      <p class="cf-body" id="cfBody"></p>
+      <div class="note-box" id="cfNote"></div>
+    </div>
+    <div class="dialog-foot">
+      <div class="spacer"></div>
+      <button class="btn ghost" id="cfNo">Cancel</button>
+      <button class="btn pri danger-pri" id="cfYes">Yes, do it</button>
     </div>
   </div>
 </div>

@@ -39,6 +39,8 @@ sign-up key, which is **not built**. Until then, the address is the gate.
 | --- | --- |
 | `apps-script.gs` | The entire backend. Pasted into Apps Script by hand. |
 | `config.js` | The backend URL. The only file to edit when the backend moves. |
+| `icon.svg` | Favicon and app icon — a head with its notes stacked under it. |
+| `manifest.webmanifest` | Lets the site install as an app. |
 | `index.html` | Gate screens, app shell, dialogs. |
 | `styles.css` | Design system and all three modes. |
 | `api.js` | The only thing that talks to the backend. Transport, session, write queue. |
@@ -226,6 +228,15 @@ fields into plain reading surfaces — still selectable, so the text can be
 copied. The expand button stays, because hiding it was the difference between
 "shared" and "shared but unreadable".
 
+## Confirming destructive actions
+
+Archiving, removing an image and revoking a share all ask first, through one
+`confirmAction()` that returns a promise. Each says what will actually happen
+and what is recoverable — archiving names the note and points out the row
+survives in the sheet; removing an image says the file goes to Drive's trash.
+Escape and clicking away both answer "no" rather than leaving the promise
+hanging. The Undo toast still follows, for the mistakes made on purpose.
+
 ## Search
 
 Two halves, deliberately split by where the data is.
@@ -236,6 +247,12 @@ Two halves, deliberately split by where the data is.
   `searchNotes` scans the caller's own live notes across text, details and the
   parent head's title, and runs 400ms after you stop typing rather than per
   keystroke. Results appear under the heads, with the matched words marked.
+
+A **dropdown** under the search box shows the best of both as you type: heads
+immediately from memory, then notes slotted in underneath when they arrive, so
+the list never waits on the network. Arrow keys move through it, Enter opens,
+Escape closes it and a second Escape clears the box. The full result panel
+stays below for the complete list.
 
 Every word in the query must appear somewhere, in any order, so "cart drawer"
 finds "the drawer on the cart page". Capped at 60 results, and the header says
@@ -309,8 +326,15 @@ follows them to another computer.
 | `blackbox` | Amber CRT: scanlines, a sweeping line, command line on. |
 | `sleek` | Near-monochrome, one pale light, almost subliminal. |
 
-A mode changes the **shape** of the page as well as its colour, through
-`--inner-max`, `--row-pad` and `--pad`:
+A mode changes the **arrangement** of the page, not only its colour. The
+biggest lever: **Paper and Royal move navigation to a 66px top bar** instead of
+a left rail, drop panel backgrounds entirely, and collapse the head page to a
+single column — they read as a document, not a dashboard. Terminal and
+Blackbox go the other way: full width, 8px rows, row subtitles hidden, a small
+uppercase heading. Sleek takes a 46px heading, Nocturne centres its masthead,
+Ember shouts in uppercase with an accent rule under the table head.
+
+The quieter levers are `--inner-max`, `--row-pad` and `--pad`:
 
 | Mode | Column | Rows | Feel |
 | --- | --- | --- | --- |

@@ -173,6 +173,8 @@ later. Only the text is ever required.
 | `Ctrl + J` | New head |
 | `Ctrl + ,` | Appearance |
 | `/` | Jump to search |
+| `Ctrl + B` | Hide or show the sidebar |
+| `↑ ↓` then `Enter` | Pick from the search dropdown |
 | | Search covers head titles **and note text** |
 | `Enter` | Save the note you are typing |
 | `Shift + Enter` | New line inside a note |

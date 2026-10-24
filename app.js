@@ -214,6 +214,12 @@ function applySkin() {
   const cssIn = $("#cssIn");
   if (cssIn && cssIn.value !== (S.prefs.custom_css || "")) cssIn.value = S.prefs.custom_css || "";
 
+  // the browser's own chrome follows the mode, so it does not sit on a page
+  // of a completely different colour
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if (tc && bg) tc.setAttribute("content", bg);
+
   // keep a copy on the device so the next load paints correctly before login
   const skin = { custom_css: S.prefs.custom_css };
   SKIN_KEYS.forEach(k => { skin[k] = S.prefs[k]; });
@@ -494,10 +500,11 @@ let searchSeq = 0;
 function onSearchInput(value) {
   S.filters.q = value;
   renderHeads();                       // instant, from memory
+  renderSuggestions(value, null);      // heads now; notes follow
 
   clearTimeout(searchTimer);
   const q = value.trim();
-  if (q.length < 2) { hideNoteHits(); return; }
+  if (q.length < 2) { hideNoteHits(); hideSuggestions(); return; }
 
   $("#nfRows").innerHTML = `<div class="searching">Looking through your notes…</div>`;
   $("#nfTerm").textContent = `"${q}"`;
@@ -505,6 +512,77 @@ function onSearchInput(value) {
   $("#notesFound").classList.remove("hide");
 
   searchTimer = setTimeout(() => findNotes(q), 400);
+}
+
+/* --- the dropdown under the search box ------------------------------------ */
+let suggIndex = -1;
+
+function hideSuggestions() {
+  $("#sugg").classList.remove("on");
+  $("#search").setAttribute("aria-expanded", "false");
+  suggIndex = -1;
+}
+
+function renderSuggestions(value, noteHits) {
+  const box = $("#sugg");
+  const q = String(value || "").trim();
+  if (q.length < 2) { hideSuggestions(); return; }
+
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const heads = S.heads
+    .filter(h => h.archived !== "Yes")
+    .filter(h => words.every(w => `${h.title} ${h.client} ${h.type}`.toLowerCase().includes(w)))
+    .slice(0, 5);
+
+  let html = "";
+  if (heads.length) {
+    html += `<div class="sugg-head">Heads</div>`;
+    html += heads.map(h => `
+      <button class="sugg-item" data-kind="head" data-id="${esc(h.head_id)}">
+        <div class="t">${highlight(h.title, words)}</div>
+        <div class="m">${h.client ? esc(h.client) + " · " : ""}${h.note_count} note${
+          h.note_count === 1 ? "" : "s"}${h.parent_id ? " · sub-head" : ""}</div>
+      </button>`).join("");
+  }
+
+  if (noteHits === null) {
+    html += `<div class="sugg-head">Notes</div><div class="quiet">Searching your notes…</div>`;
+  } else if (noteHits.length) {
+    html += `<div class="sugg-head">Notes</div>`;
+    html += noteHits.slice(0, 6).map(n => `
+      <button class="sugg-item" data-kind="note" data-id="${esc(n.note_id)}">
+        <div class="t">${highlight(n.text, words)}</div>
+        <div class="m">${esc(n.head_title || "Inbox")} · ${esc(dateOf(n.created_at))}</div>
+      </button>`).join("");
+  } else if (!heads.length) {
+    html += `<div class="quiet">Nothing matches “${esc(q)}”.</div>`;
+  }
+
+  box.innerHTML = html;
+  box.classList.add("on");
+  $("#search").setAttribute("aria-expanded", "true");
+  suggIndex = -1;
+
+  $$(".sugg-item", box).forEach(el => on(el, "mousedown", e => {
+    e.preventDefault();                 // keep focus until we have navigated
+    pickSuggestion(el);
+  }));
+}
+
+function pickSuggestion(el) {
+  hideSuggestions();
+  if (el.dataset.kind === "head") openHead(el.dataset.id);
+  else openNote(el.dataset.id);
+}
+
+function moveSuggestion(step) {
+  const items = $$(".sugg-item");
+  if (!items.length) return;
+  items.forEach(i => i.classList.remove("cur"));
+  suggIndex = (suggIndex + step + items.length) % items.length;
+  const el = items[suggIndex];
+  el.classList.add("cur");
+  el.scrollIntoView({ block: "nearest" });
 }
 
 function hideNoteHits() {
@@ -521,6 +599,7 @@ async function findNotes(q) {
     if (mine !== searchSeq) return;    // a newer search has replaced this one
     if (S.filters.q.trim() !== q) return;
     renderNoteHits(res);
+    renderSuggestions(S.filters.q, res.notes || []);
   } catch (e) {
     if (mine !== searchSeq) return;
     $("#nfRows").innerHTML = `<div class="searching">Could not search: ${esc(e.message)}</div>`;
@@ -1130,7 +1209,20 @@ function saveNoteFromUi(el, id) {
   toast("Note saved.", "good");
 }
 
-function archiveNoteUi(id) {
+async function archiveNoteUi(id) {
+  const note = findNote(id);
+  const ok = await confirmAction({
+    kind: "Archive note",
+    title: "Archive this note?",
+    body: note ? `“${note.text.slice(0, 110)}${note.text.length > 110 ? "…" : ""}”` : "",
+    note: "Nothing is deleted — the row stays in the sheet with archived set to Yes. It just leaves this list.",
+    yes: "Archive it"
+  });
+  if (!ok) return;
+  archiveNoteNow(id);
+}
+
+function archiveNoteNow(id) {
   // Keep a copy so Undo can put it back where it was, not just un-archive it.
   const note = findNote(id);
   const snapshot = note ? Object.assign({}, note) : null;
@@ -1656,6 +1748,15 @@ function paintShot(box, url) {
 }
 
 async function removeImage(noteId, imageId) {
+  const ok = await confirmAction({
+    kind: "Remove image",
+    title: "Remove this image?",
+    body: "It comes off the note.",
+    note: "The file goes to your Google Drive trash, so you can still get it back from there.",
+    yes: "Remove it"
+  });
+  if (!ok) return;
+
   const n = findNote(noteId);
   if (n) n.images = imageIdsOf(n).filter(i => i !== imageId).join(",");
   if (S.current) renderNotes();
@@ -1782,7 +1883,17 @@ function renderShared() {
 }
 
 async function revokeShare(shareId) {
-  S.shares.outgoing = S.shares.outgoing.filter(s => s.share_id !== shareId);
+  const s = S.shares.outgoing.find(x => x.share_id === shareId);
+  const ok = await confirmAction({
+    kind: "Revoke access",
+    title: s ? `Stop sharing with ${s.to_name}?` : "Revoke this share?",
+    body: s ? `They lose access to “${String(s.label).slice(0, 90)}” straight away.` : "",
+    note: "You can share it with them again at any time.",
+    yes: "Revoke it"
+  });
+  if (!ok) return;
+
+  S.shares.outgoing = S.shares.outgoing.filter(x => x.share_id !== shareId);
   renderShared();
   try {
     await API.call("unshareItem", { share_id: shareId });
@@ -2139,6 +2250,39 @@ function show(view) {
   }
 }
 
+/* --------------------------------------------------------------------------
+   Confirming before something goes away
+
+   Archiving is recoverable in the sheet, but it does not feel that way in the
+   app, and an accidental click on the wrong row is easy. Ask first; the Undo
+   that follows is for the mistakes you make on purpose.
+   -------------------------------------------------------------------------- */
+let confirmResolve = null;
+
+function confirmAction({ kind, title, body, note, yes, danger }) {
+  $("#cfKind").textContent = kind || "Confirm";
+  $("#cfTitle").textContent = title || "Are you sure?";
+  $("#cfBody").textContent = body || "";
+  const noteBox = $("#cfNote");
+  noteBox.textContent = note || "";
+  noteBox.classList.toggle("hide", !note);
+  const btn = $("#cfYes");
+  btn.textContent = yes || "Yes, do it";
+  btn.classList.toggle("danger-pri", danger !== false);
+
+  openDialog("#cfScrim");
+  setTimeout(() => $("#cfNo").focus(), 30);
+
+  return new Promise(resolve => { confirmResolve = resolve; });
+}
+
+function settleConfirm(answer) {
+  closeDialog("#cfScrim");
+  const r = confirmResolve;
+  confirmResolve = null;
+  if (r) r(answer);
+}
+
 function openDialog(sel, focusSel) {
   $(sel).classList.add("on");
   if (focusSel) setTimeout(() => $(focusSel).focus(), 30);
@@ -2250,7 +2394,32 @@ function wire() {
   $$("[data-nav]").forEach(b => on(b, "click", () => show(b.dataset.nav)));
   on($("#railToggle"), "click", () => document.body.classList.toggle("rail-open"));
 
+  /* collapse the sidebar to its icons — a per-device choice, so it is kept
+     here rather than on the account */
+  const setRail = min => {
+    document.body.classList.toggle("rail-min", min);
+    local("railMin", min);
+  };
+  on($("#railCollapse"), "click", () => {
+    if (innerWidth <= 900) { document.body.classList.toggle("rail-open"); return; }
+    setRail(!document.body.classList.contains("rail-min"));
+  });
+
   on($("#search"), "input", e => onSearchInput(e.target.value));
+  on($("#search"), "keydown", e => {
+    const open = $("#sugg").classList.contains("on");
+    if (e.key === "ArrowDown") { e.preventDefault(); if (open) moveSuggestion(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); if (open) moveSuggestion(-1); }
+    else if (e.key === "Enter") {
+      const cur = $(".sugg-item.cur");
+      if (cur) { e.preventDefault(); pickSuggestion(cur); }
+    } else if (e.key === "Escape") {
+      if (open) { e.stopPropagation(); hideSuggestions(); }
+      else { e.target.value = ""; onSearchInput(""); }
+    }
+  });
+  on($("#search"), "blur", () => setTimeout(hideSuggestions, 120));
+  on($("#search"), "focus", e => { if (e.target.value.trim().length >= 2) onSearchInput(e.target.value); });
   on($("#fClient"), "change", e => { S.filters.client = e.target.value; renderHeads(); });
   on($("#fType"), "change", e => { S.filters.type = e.target.value; renderHeads(); });
   on($("#fStatus"), "change", e => { S.filters.status = e.target.value; renderHeads(); });
@@ -2269,9 +2438,16 @@ function wire() {
   on($("#nhTitle"), "keydown", e => { if (e.key === "Enter") { e.preventDefault(); createHeadFromDialog(); } });
 
   $$(".scrim").forEach(sc => {
-    on(sc, "mousedown", e => { if (e.target === sc) closeDialog("#" + sc.id); });
+    on(sc, "mousedown", e => {
+      if (e.target !== sc) return;
+      if (sc.id === "cfScrim") { settleConfirm(false); return; }   // click-away = no
+      closeDialog("#" + sc.id);
+    });
     $$("[data-close]", sc).forEach(b => on(b, "click", () => closeDialog("#" + sc.id)));
   });
+
+  on($("#cfYes"), "click", () => settleConfirm(true));
+  on($("#cfNo"), "click", () => settleConfirm(false));
 
   on($("#hNoteAdd"), "click", addNoteHere);
   on($("#hNoteText"), "keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNoteHere(); } });
@@ -2382,9 +2558,21 @@ function wire() {
     markEditing("head-details", false);
     toast("Details saved.", "good");
   });
-  on($("#hArchive"), "click", () => {
+  on($("#hArchive"), "click", async () => {
     const h = S.current.head;
     if (h.archived === "Yes") { patchHead({ archived: "No" }); return; }
+
+    const kids = kidCount(h.head_id);
+    const ok = await confirmAction({
+      kind: "Archive head",
+      title: `Archive “${h.title}”?`,
+      body: `${h.note_count || 0} note${h.note_count === 1 ? "" : "s"} go with it.` +
+            (kids ? ` It also still has ${kids} sub-head${kids === 1 ? "" : "s"}, which will stop this.` : ""),
+      note: "Nothing is deleted — the row stays in the sheet. Tick “Include archived” on the Heads list to find it again.",
+      yes: "Archive it"
+    });
+    if (!ok) return;
+
     const id = h.head_id;
     const snapshot = Object.assign({}, h);
     patchHead({ archived: "Yes" }, false);
@@ -2434,6 +2622,15 @@ function wire() {
       $("#lightbox").classList.remove("on");
       return;
     }
+    if (e.key === "Escape" && $("#cfScrim").classList.contains("on")) {
+      settleConfirm(false);               // Escape must answer, not just close
+      return;
+    }
+    if (e.key === "Enter" && $("#cfScrim").classList.contains("on")) {
+      e.preventDefault();
+      settleConfirm(true);
+      return;
+    }
     if (e.key === "Escape" && anyDialogOpen()) {
       $$(".scrim.on").forEach(sc => closeDialog("#" + sc.id));
       return;
@@ -2442,6 +2639,7 @@ function wire() {
     if (mod && (e.key === "k" || e.key === "K")) { e.preventDefault(); openQuickAdd(); return; }
     if (mod && (e.key === "j" || e.key === "J")) { e.preventDefault(); openDialog("#nhScrim", "#nhTitle"); return; }
     if (mod && e.key === ",") { e.preventDefault(); openDialog("#stScrim"); return; }
+    if (mod && (e.key === "b" || e.key === "B")) { e.preventDefault(); $("#railCollapse").click(); return; }
     if (e.key === "/" && !typing && !anyDialogOpen()) { e.preventDefault(); show("heads"); $("#search").focus(); }
   });
 
@@ -2560,6 +2758,7 @@ async function boot() {
   // paint the remembered skin before anything is drawn, so there is no flash
   const skin = local("skin");
   if (skin) { S.prefs = Object.assign(S.prefs, skin); applySkin(); }
+  if (local("railMin")) document.body.classList.add("rail-min");
   S.mru = local("mru") || [];
 
   wireGate();

@@ -456,6 +456,132 @@
 /* ember and nocturne: the default shape, a touch taller */
 [data-mode="ember"],[data-mode="nocturne"]{--row-pad:15px;--inner-max:1240px}
 
+/* --------------------------------------------------------------------------
+   1b-ii. The structural differences
+
+   Spacing alone makes modes look like one design at different zoom levels.
+   These change the arrangement itself: where the navigation lives, whether a
+   row is a card or a line of a table, how loud a heading is.
+   -------------------------------------------------------------------------- */
+
+/* --- paper and royal: navigation moves to the top ------------------------ */
+@media (min-width:901px){
+  [data-mode="paper"] .shell,
+  [data-mode="royal"] .shell{
+    grid-template-columns:1fr;grid-template-rows:auto 1fr;
+  }
+  [data-mode="paper"] .rail,
+  [data-mode="royal"] .rail{
+    flex-direction:row;align-items:center;gap:20px;
+    border-right:none;border-bottom:1px solid var(--line);
+    padding:0 var(--pad);height:66px;background:transparent;
+  }
+  [data-mode="paper"] .rail-head,
+  [data-mode="royal"] .rail-head{border:none;padding:0;flex:0 0 auto}
+  [data-mode="paper"] .rail-head .who,
+  [data-mode="royal"] .rail-head .who{display:none}
+  [data-mode="paper"] .rail-body,
+  [data-mode="royal"] .rail-body{
+    flex:1;display:flex;align-items:center;gap:6px;overflow:visible;padding:0;
+  }
+  [data-mode="paper"] .rail-group,
+  [data-mode="royal"] .rail-group{margin:0;display:flex;align-items:center;gap:6px}
+  [data-mode="paper"] .rail-group > .eyebrow,
+  [data-mode="royal"] .rail-group > .eyebrow,
+  [data-mode="paper"] .statline,
+  [data-mode="royal"] .statline{display:none}
+  [data-mode="paper"] .nav-item,
+  [data-mode="royal"] .nav-item{width:auto;padding:7px 13px}
+  [data-mode="paper"] .rail-foot,
+  [data-mode="royal"] .rail-foot{
+    border:none;padding:0;flex-direction:row;gap:7px;flex:0 0 auto;
+  }
+  [data-mode="paper"] .rail-foot .row,
+  [data-mode="royal"] .rail-foot .row{gap:7px}
+  [data-mode="paper"] #qaOpen,
+  [data-mode="royal"] #qaOpen{width:auto;padding:8px 16px}
+  /* the collapse control has nothing to collapse when the bar is horizontal */
+  [data-mode="paper"] #railCollapse,
+  [data-mode="royal"] #railCollapse{display:none}
+  body.rail-min [data-mode="paper"] .shell{grid-template-columns:1fr}
+}
+
+/* --- paper and royal: a document, not a dashboard ------------------------ */
+[data-mode="paper"] .panel,
+[data-mode="royal"] .panel{background:transparent;box-shadow:none}
+[data-mode="paper"] .thead,
+[data-mode="royal"] .thead{
+  border-bottom:2px solid var(--line-strong);background:transparent;
+}
+/* Paper reads; Royal announces. Both set here so neither depends on which
+   rule happens to come later in the file. */
+[data-mode="paper"] .page-head h1{font-size:34px;letter-spacing:-.01em;line-height:1.15}
+[data-mode="royal"] .page-head h1{font-size:40px;letter-spacing:-.01em;line-height:1.1}
+[data-mode="paper"] .trow .title,
+[data-mode="royal"] .trow .title{font-size:19px;font-weight:600}
+[data-mode="paper"] .card,
+[data-mode="royal"] .card{background:transparent;box-shadow:none;
+  border-bottom:1px solid var(--line);border-radius:0;margin-bottom:26px}
+[data-mode="paper"] .card-body,
+[data-mode="royal"] .card-body{padding:16px 0}
+[data-mode="paper"] .card-head,
+[data-mode="royal"] .card-head{padding:0 0 10px}
+
+/* --- terminal and blackbox: a table, not a stack of cards ---------------- */
+[data-mode="terminal"] .panel,
+[data-mode="blackbox"] .panel,
+[data-mode="terminal"] .card,
+[data-mode="blackbox"] .card,
+[data-mode="terminal"] .filters,
+[data-mode="blackbox"] .filters{border-radius:0}
+[data-mode="terminal"] .trow .sub,
+[data-mode="blackbox"] .trow .sub{display:none}
+[data-mode="terminal"] .trow,
+[data-mode="blackbox"] .trow{align-items:center}
+[data-mode="terminal"] .trow .title,
+[data-mode="blackbox"] .trow .title{font-size:13px;font-weight:500}
+[data-mode="terminal"] .page-head h1,
+[data-mode="blackbox"] .page-head h1{font-size:17px;letter-spacing:.14em;text-transform:uppercase}
+[data-mode="terminal"] .page-head .page-sub,
+[data-mode="blackbox"] .page-head .page-sub{display:none}
+[data-mode="terminal"] .head-hero .meta,
+[data-mode="blackbox"] .head-hero .meta{margin-top:8px}
+[data-mode="blackbox"] .trow .title::before{content:"> ";color:var(--ink-faint)}
+
+/* --- sleek: a very loud heading and a lot of air ------------------------- */
+[data-mode="sleek"] .page-head h1{font-size:46px;font-weight:700;letter-spacing:-.02em}
+[data-mode="sleek"] .head-hero .title-in{font-size:40px;letter-spacing:-.02em}
+[data-mode="sleek"] .thead{
+  font-size:8.5px;letter-spacing:.3em;border-bottom:none;
+}
+[data-mode="sleek"] .trow{border-bottom:none;margin-bottom:2px;border-radius:var(--radius-sm)}
+[data-mode="sleek"] .trow .title{font-size:16px}
+[data-mode="sleek"] .panel{padding:10px}
+
+/* --- runic: ornamental rules and small caps ------------------------------ */
+[data-mode="runic"] .page-head h1{font-size:34px;letter-spacing:.02em}
+[data-mode="runic"] .page-head{
+  border-bottom:2px solid var(--line-strong);padding-bottom:14px;
+}
+[data-mode="runic"] .thead{letter-spacing:.3em;font-size:9px}
+[data-mode="runic"] .trow .title{font-family:var(--font-disp);font-size:17px}
+[data-mode="runic"] .card-head{border-bottom:2px solid var(--line)}
+
+/* --- ember: industrial, sharp, shouty labels ----------------------------- */
+[data-mode="ember"] .page-head h1{
+  text-transform:uppercase;letter-spacing:.08em;font-size:22px;
+}
+[data-mode="ember"] .trow{border-left:2px solid transparent}
+[data-mode="ember"] .trow:hover{border-left-color:var(--accent)}
+[data-mode="ember"] .thead{border-bottom:2px solid var(--accent);color:var(--accent)}
+[data-mode="ember"] .chip{text-transform:uppercase;letter-spacing:.08em}
+
+/* --- nocturne: soft, rounded, centred masthead --------------------------- */
+[data-mode="nocturne"] .page-head{flex-direction:column;align-items:center;text-align:center;gap:4px}
+[data-mode="nocturne"] .page-head h1{font-size:30px;font-weight:600}
+[data-mode="nocturne"] .trow{border-bottom:none;margin-bottom:3px;border-radius:14px}
+[data-mode="nocturne"] .thead{border-bottom:none;opacity:.75}
+
 /* accent ------------------------------------------------------------------- */
 [data-accent="emerald"]{--accent:#3ddc84;--accent-dim:rgba(61,220,132,.13);--accent-ink:#04120a}
 [data-theme="light"][data-accent="emerald"]{--accent:#0f8a4d;--accent-dim:rgba(15,138,77,.10);--accent-ink:#fff}
@@ -840,7 +966,38 @@ a:hover{text-decoration:underline}
 /* --------------------------------------------------------------------------
    5. Shell
    -------------------------------------------------------------------------- */
-.shell{display:grid;grid-template-columns:var(--rail-w) 1fr;height:100vh}
+.shell{display:grid;grid-template-columns:var(--rail-w) 1fr;height:100vh;transition:grid-template-columns .18s ease}
+
+/* --------------------------------------------------------------------------
+   Collapsed sidebar
+
+   Not hidden — narrowed to its icons, so the counts and the quick-note button
+   are still one click away. Below 900px the rail is a drawer already and this
+   does not apply.
+   -------------------------------------------------------------------------- */
+@media (min-width:901px){
+  body.rail-min .shell{grid-template-columns:62px 1fr}
+  body.rail-min .rail-head .wordmark,
+  body.rail-min .rail-head .who,
+  body.rail-min .rail-group > .eyebrow,
+  body.rail-min .nav-item .lbl,
+  body.rail-min .statline .k,
+  body.rail-min .rail-foot .btn span,
+  body.rail-min #qaOpen span{display:none}
+  body.rail-min .rail-head{padding:18px 8px;text-align:center}
+  body.rail-min .rail-body{padding:14px 8px}
+  body.rail-min .nav-item{justify-content:center;padding:9px 0;position:relative}
+  body.rail-min .nav-item .count{
+    position:absolute;top:2px;right:4px;font-size:9px;min-width:0;padding:0 4px;
+  }
+  body.rail-min .statline{justify-content:center;padding:6px 0}
+  body.rail-min .rail-foot{padding:8px}
+  body.rail-min .rail-foot .row{flex-direction:column}
+  body.rail-min .rail-foot .btn{padding:7px 0;font-size:10px}
+  body.rail-min #qaOpen{padding:9px 0;font-size:15px}
+  /* the shortcut list is pure text, so it has nothing to show when narrow */
+  body.rail-min .rail-group:last-of-type{display:none}
+}
 .rail{background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .rail-head{padding:20px 20px 16px;border-bottom:1px solid var(--line)}
 .rail-head .wordmark{font-size:18px}
@@ -898,6 +1055,39 @@ a:hover{text-decoration:underline}
 }
 .search .inp:focus ~ kbd{opacity:0}
 .cmdbar .spacer{flex:1}
+
+/* --------------------------------------------------------------------------
+   Search suggestions
+
+   Heads appear as you type, from memory. Notes arrive a moment later from the
+   sheet and slot in underneath, so the list never waits on the network.
+   -------------------------------------------------------------------------- */
+.sugg{
+  position:absolute;top:calc(100% + 7px);left:0;right:0;z-index:150;
+  background:var(--panel);border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-2);
+  max-height:min(58vh,440px);overflow-y:auto;display:none;
+}
+.sugg.on{display:block}
+.sugg-head{
+  padding:7px 12px;font-family:var(--font-disp);font-weight:600;font-size:9px;
+  letter-spacing:.2em;text-transform:var(--uppercase);color:var(--ink-faint);
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);
+}
+.sugg-item{
+  width:100%;display:block;text-align:left;padding:9px 12px;
+  border-bottom:1px solid var(--line);
+}
+.sugg-item:last-child{border-bottom:none}
+.sugg-item:hover,.sugg-item.cur{background:var(--accent-dim)}
+.sugg-item .t{
+  color:var(--ink-strong);font-size:12.5px;line-height:1.4;
+  overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+.sugg-item .m{margin-top:3px;font-size:10px;color:var(--ink-faint)}
+.sugg-item mark{background:var(--accent-dim);color:var(--accent);padding:0 1px;border-radius:2px}
+.sugg .quiet{padding:11px 12px;font-size:11px;color:var(--ink-faint)}
 
 .sync{
   display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-soft);
@@ -1060,6 +1250,19 @@ a:hover{text-decoration:underline}
 .inbox-item .when{margin-top:6px;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .inbox-item .mover{display:flex;gap:8px;align-items:center;flex:0 0 auto;width:300px}
 @media (max-width:860px){.inbox-item{flex-direction:column;gap:12px}.inbox-item .mover{width:100%}}
+
+/* confirm dialog ------------------------------------------------------------- */
+.cf-title{
+  font-family:var(--font-disp);font-weight:700;font-size:18px;
+  color:var(--ink-strong);line-height:1.3;margin-bottom:8px;
+}
+.cf-body{font-size:13px;color:var(--ink);line-height:1.6;overflow-wrap:anywhere}
+.cf-body:empty{display:none}
+#cfNote{margin-top:14px}
+.btn.danger-pri{
+  background:var(--red);border-color:var(--red);color:#fff;
+}
+.btn.danger-pri:hover{background:var(--red);border-color:var(--red);color:#fff;filter:brightness(1.1)}
 
 /* --------------------------------------------------------------------------
    The note page
@@ -1407,7 +1610,6 @@ body.readonly .details-ta{background:var(--panel-2);padding-left:16px}
    7. Paper mode — a few shape changes the tokens cannot express
    -------------------------------------------------------------------------- */
 [data-mode="paper"] .trow .title{font-size:17px;font-weight:600}
-[data-mode="paper"] .page-head h1{font-size:30px}
 [data-mode="paper"] .head-hero .title-in{font-size:32px}
 [data-mode="paper"] .note-text{font-size:15.5px}
 [data-mode="paper"] .thead{font-size:11px;letter-spacing:.06em}

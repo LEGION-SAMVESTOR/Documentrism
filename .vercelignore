@@ -4,3 +4,6 @@ apps-script.gs
 
 # Docs are for the repo, not the deployment.
 *.md
+
+# Local preview helper, not part of the site.
+preview.html
