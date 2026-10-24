@@ -7,7 +7,7 @@
 <title>Documentrism</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Fredoka:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Luckiest+Guy&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <!-- The user's own CSS is written into this element at runtime, as text.
      It is never inserted as markup. See applyCustomCss() in app.js. -->
@@ -273,7 +273,7 @@
                     <textarea class="ta" id="hNoteText" rows="2" placeholder="What did you just do? One line is enough."></textarea>
                     <button class="btn pri" id="hNoteAdd">Add</button>
                   </div>
-                  <div class="hint">Enter saves · Shift + Enter makes a new line</div>
+                  <div class="hint">Enter saves · Shift + Enter makes a new line · paste or drop an image to attach it</div>
                 </div>
                 <div class="timeline" id="hNotes"></div>
               </div>
@@ -383,8 +383,7 @@
         <div class="field span"><label for="nhTitle">Title (required)</label>
           <input class="inp" id="nhTitle" placeholder="Aujjessa PDP rebuild"></div>
         <div class="field"><label for="nhClient">Client</label>
-          <input class="inp" id="nhClient" list="clientList" placeholder="Pick one or type a new one">
-          <datalist id="clientList"></datalist></div>
+          <select class="sel" id="nhClient"></select></div>
         <div class="field"><label for="nhType">Type</label><select class="sel" id="nhType"></select></div>
         <div class="field"><label for="nhStatus">Status</label><select class="sel" id="nhStatus"></select></div>
         <div class="field"><label for="nhLink">Link</label><input class="inp" id="nhLink" placeholder="https://"></div>
@@ -494,6 +493,17 @@
             <option value="compact">Compact — more rows on screen</option>
           </select>
         </div>
+        <div class="field">
+          <label for="stStyle">Surface style</label>
+          <select class="sel" id="stStyle">
+            <option value="plain">Plain — soft panels</option>
+            <option value="glass">Glass — blurred and translucent</option>
+            <option value="neo">Neo — soft extruded plastic</option>
+            <option value="flat">Flat — hairlines, no depth</option>
+            <option value="brutal">Brutal — heavy ink and hard shadows</option>
+            <option value="toon">Cartoon — cream paper and outlines</option>
+          </select>
+        </div>
         <div class="field span">
           <label class="toggle" style="margin-top:4px">
             <input type="checkbox" id="stAnim"> Animations and transitions
@@ -525,6 +535,11 @@
       <button class="btn pri" id="stSave">Save appearance</button>
     </div>
   </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <span class="close">✕</span>
+  <img id="lightboxImg" alt="">
 </div>
 
 <div class="toasts" id="toasts"></div>

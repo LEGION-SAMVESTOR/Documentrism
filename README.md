@@ -153,6 +153,40 @@ names only, no birthdays, no hashes.
 Shared content is never written to the local cache, which is keyed per account
 and meant for your own work.
 
+## Validation
+
+Checked in `app.js` and again in `apps-script.gs`, because the browser copy is
+a courtesy and the server copy is the one that protects the sheet.
+
+- **Title** — at least one letter and 2+ characters. A bare number is refused;
+  a head called "2026" tells you nothing a week later.
+- **Client** — must be a value on the Lists tab. The field is a `<select>`, and
+  the server rejects anything not in the list, so free text cannot get in. New
+  clients are added on the Lists tab, or via the `addClient` action.
+- **Link** — empty or `http(s)://…`. This is also what keeps `javascript:` out
+  of an attribute that ends up in an `href`.
+- **Type / status** — must be on the Lists tab.
+
+## Images
+
+A cell holds about 50,000 characters, so pictures cannot live in the sheet. The
+`images` column on Notes holds comma-separated Drive file ids instead.
+
+- Uploads are resized to 1400px on the longest edge and re-encoded in the
+  browser first (PNG for small screenshots, JPEG otherwise), so a 6MB photo is
+  not a 6MB round trip. 8 per note, 4MB each after resizing.
+- Files go to a private *Documentrism Images* folder in the owner's Drive and
+  are explicitly set to no sharing.
+- `getImage` returns the bytes base64-encoded, and only after checking the
+  caller owns the note or has it (or its head) shared with them. Nothing is
+  reachable by guessing a URL, and a shared note's pictures follow the same
+  rule as its text.
+- Fetched bytes are cached in memory for the session, because each fetch is a
+  full Apps Script round trip.
+
+**This needs a new Drive permission**, so authorization is requested again the
+first time `setupSheet` runs after this change.
+
 ## Design modes
 
 Three modes, chosen per person and stored on their account, so the choice
@@ -163,6 +197,14 @@ follows them to another computer.
 | `signal` | Default. LEDGER's palette and type on an application shell. |
 | `terminal` | A console: phosphor on black, square corners, a command line. |
 | `paper` | Light, serif, generous — for reading and writing long details. |
+
+Crossed with a **surface style** on `<html data-style>`, ported from LEDGER's
+own axis: `plain`, `glass` (frosted and translucent), `neo` (soft extruded
+plastic), `flat` (hairlines, no depth), `brutal` (heavy ink, hard offset
+shadows) and `toon` (LEDGER's cartoon — cream paper with dots, chunky outlines,
+Fredoka and Luckiest Guy). A mode sets palette and type; a style sets how a
+surface is made, and every style rule targets the one shared set of surfaces so
+it is written once.
 
 A mode is a **token swap** on `<html data-mode>`, not a separate stylesheet.
 Every component is written once and follows whichever mode is on; only a handful

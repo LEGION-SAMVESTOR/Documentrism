@@ -247,6 +247,191 @@
 }
 
 /* --------------------------------------------------------------------------
+   1c. Surface style — ported from LEDGER's data-style axis
+
+   This is a second, independent dimension: a mode sets the palette and the
+   type, a style sets how a surface is made. Every rule here targets the one
+   shared set of surfaces (.panel, .card, .head-hero, .dialog, .filters,
+   .gate-card, .rail, .toast) so a style is written once and applies to the
+   whole app.
+   -------------------------------------------------------------------------- */
+:root{--surface:var(--panel);--surface-border:1px solid var(--line)}
+
+/* --- glass: translucent, blurred, lit along the top edge ------------------- */
+[data-style="glass"]{--radius:20px;--radius-sm:14px;--radius-xs:10px}
+[data-style="glass"] body{background-attachment:fixed}
+[data-style="glass"] .panel,
+[data-style="glass"] .card,
+[data-style="glass"] .head-hero,
+[data-style="glass"] .filters,
+[data-style="glass"] .dialog,
+[data-style="glass"] .gate-card,
+[data-style="glass"] .toast,
+[data-style="glass"] .console-wrap{
+  background:color-mix(in srgb, var(--panel) 42%, transparent);
+  backdrop-filter:blur(22px) saturate(150%);
+  -webkit-backdrop-filter:blur(22px) saturate(150%);
+  border:1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+  box-shadow:0 18px 46px -20px rgba(0,0,0,.55),
+             inset 0 1px 0 color-mix(in srgb, var(--ink) 14%, transparent);
+}
+[data-style="glass"] .rail{
+  background:color-mix(in srgb, var(--rail) 60%, transparent);
+  backdrop-filter:blur(22px) saturate(140%);
+  -webkit-backdrop-filter:blur(22px) saturate(140%);
+}
+[data-style="glass"] .cmdbar{
+  background:color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter:blur(20px) saturate(140%);
+  -webkit-backdrop-filter:blur(20px) saturate(140%);
+}
+[data-style="glass"] .btn{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+/* --- neo: soft extruded plastic, light from the top left ------------------ */
+[data-style="neo"]{
+  --radius:18px;--radius-sm:13px;--radius-xs:10px;
+  --neo-hi:rgba(255,255,255,.07);
+  --neo-lo:rgba(0,0,0,.55);
+}
+[data-theme="light"][data-style="neo"]{--neo-hi:rgba(255,255,255,.95);--neo-lo:rgba(30,50,70,.18)}
+[data-style="neo"] .panel,
+[data-style="neo"] .card,
+[data-style="neo"] .head-hero,
+[data-style="neo"] .filters,
+[data-style="neo"] .dialog,
+[data-style="neo"] .gate-card,
+[data-style="neo"] .console-wrap{
+  background:var(--bg);border:none;
+  box-shadow:7px 7px 16px var(--neo-lo), -7px -7px 16px var(--neo-hi);
+}
+[data-style="neo"] .rail{background:var(--bg);border-right:none;box-shadow:6px 0 16px var(--neo-lo)}
+[data-style="neo"] .cmdbar{background:var(--bg);border-bottom:none;box-shadow:0 5px 14px -8px var(--neo-lo)}
+[data-style="neo"] .btn,[data-style="neo"] .inp,[data-style="neo"] .sel,[data-style="neo"] .ta{
+  background:var(--bg);border:none;
+  box-shadow:4px 4px 9px var(--neo-lo), -4px -4px 9px var(--neo-hi);
+}
+[data-style="neo"] .btn:hover{box-shadow:2px 2px 6px var(--neo-lo), -2px -2px 6px var(--neo-hi)}
+[data-style="neo"] .btn.pri{background:var(--accent);color:var(--accent-ink)}
+[data-style="neo"] .inp:focus,[data-style="neo"] .sel:focus,[data-style="neo"] .ta:focus{
+  box-shadow:inset 3px 3px 7px var(--neo-lo), inset -3px -3px 7px var(--neo-hi);
+}
+[data-style="neo"] .trow{border-bottom:none}
+[data-style="neo"] .thead{border-bottom:none}
+
+/* --- flat: no depth at all, hairlines only -------------------------------- */
+[data-style="flat"]{--radius:0px;--radius-sm:0px;--radius-xs:0px}
+[data-style="flat"] .panel,
+[data-style="flat"] .card,
+[data-style="flat"] .head-hero,
+[data-style="flat"] .filters,
+[data-style="flat"] .dialog,
+[data-style="flat"] .gate-card,
+[data-style="flat"] .toast,
+[data-style="flat"] .console-wrap{box-shadow:none;border:1px solid var(--line)}
+[data-style="flat"] .btn{box-shadow:none}
+[data-style="flat"] body{background-image:none}
+
+/* --- brutal: heavy ink borders and a hard offset shadow ------------------- */
+[data-style="brutal"]{--radius:0px;--radius-sm:0px;--radius-xs:0px}
+[data-style="brutal"] .panel,
+[data-style="brutal"] .card,
+[data-style="brutal"] .head-hero,
+[data-style="brutal"] .filters,
+[data-style="brutal"] .dialog,
+[data-style="brutal"] .gate-card,
+[data-style="brutal"] .toast,
+[data-style="brutal"] .console-wrap{
+  background:var(--panel);
+  border:3px solid var(--ink-strong);
+  box-shadow:7px 7px 0 var(--ink-strong);
+}
+[data-style="brutal"] .btn{
+  border:2.5px solid var(--ink-strong);box-shadow:3px 3px 0 var(--ink-strong);
+  font-weight:700;
+}
+[data-style="brutal"] .btn:hover{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink-strong)}
+[data-style="brutal"] .btn.pri{background:var(--accent);color:var(--accent-ink)}
+[data-style="brutal"] .inp,[data-style="brutal"] .sel,[data-style="brutal"] .ta{
+  border:2.5px solid var(--ink-strong);
+}
+[data-style="brutal"] .chip{border:2px solid var(--ink-strong);font-weight:700}
+[data-style="brutal"] .rail{border-right:3px solid var(--ink-strong)}
+[data-style="brutal"] .cmdbar{border-bottom:3px solid var(--ink-strong)}
+[data-style="brutal"] .page-head h1{text-transform:uppercase;letter-spacing:.04em}
+
+/* --- toon: LEDGER's cartoon. Cream paper, dots, ink outlines -------------- */
+[data-style="toon"]{
+  --radius:20px;--radius-sm:16px;--radius-xs:12px;
+  --toon-out:#14110f;
+  --bg:#fbeed2;
+  --panel:#fffdf6;
+  --panel-2:#f8edd4;
+  --panel-3:#f1e2c2;
+  --rail:#f7e6c4;
+  --ink:#1a1512;
+  --ink-strong:#14110f;
+  --ink-soft:#7a6a55;
+  --ink-faint:#9c8c76;
+  --line:rgba(26,21,18,.20);
+  --line-strong:rgba(26,21,18,.45);
+  --green:#0f8a4d;--green-bg:#c9f2d8;
+  --blue:#1d64c0;--blue-bg:#d7e6ff;
+  --red:#c8202f;--red-bg:#ffdadd;
+  --amber:#9a6b00;--amber-bg:#ffe9b3;
+  --font-body:"Fredoka",system-ui,sans-serif;
+  --font-disp:"Fredoka",system-ui,sans-serif;
+  --fs:14px;
+  --uppercase:none;
+  --track:.01em;
+}
+/* paper dots */
+[data-style="toon"] body{
+  background-color:var(--bg);
+  background-image:radial-gradient(circle, rgba(26,21,18,.16) 1.6px, transparent 1.6px);
+  background-size:22px 22px;
+}
+[data-style="toon"] .panel,
+[data-style="toon"] .card,
+[data-style="toon"] .head-hero,
+[data-style="toon"] .filters,
+[data-style="toon"] .dialog,
+[data-style="toon"] .gate-card,
+[data-style="toon"] .toast,
+[data-style="toon"] .console-wrap{
+  background:var(--panel);backdrop-filter:none;
+  border:3px solid var(--toon-out);
+  box-shadow:6px 6px 0 var(--toon-out);
+}
+[data-style="toon"] .rail{border-right:3px solid var(--toon-out)}
+[data-style="toon"] .cmdbar{border-bottom:3px solid var(--toon-out);backdrop-filter:none;background:var(--panel-2)}
+/* chunky comic lettering with a hard ink offset */
+[data-style="toon"] .wordmark,
+[data-style="toon"] .page-head h1,
+[data-style="toon"] .empty h3{
+  font-family:"Luckiest Guy","Fredoka",cursive;font-weight:400;letter-spacing:.02em;
+  color:var(--accent);-webkit-text-stroke:2px var(--toon-out);paint-order:stroke fill;
+  text-shadow:4px 4px 0 var(--toon-out);
+}
+[data-style="toon"] .wordmark i{color:var(--red)}
+[data-style="toon"] .btn{
+  border:3px solid var(--toon-out);box-shadow:3px 3px 0 var(--toon-out);
+  font-weight:600;text-transform:none;letter-spacing:.01em;
+}
+[data-style="toon"] .btn:hover{transform:translate(1.5px,1.5px);box-shadow:1.5px 1.5px 0 var(--toon-out)}
+[data-style="toon"] .btn.pri{background:var(--accent);color:#fff;-webkit-text-stroke:0}
+[data-style="toon"] .inp,[data-style="toon"] .sel,[data-style="toon"] .ta,
+[data-style="toon"] .details-ta,[data-style="toon"] .css-ta{
+  border:2.5px solid var(--toon-out);background:var(--panel);
+}
+[data-style="toon"] .chip{border:2px solid var(--toon-out);font-weight:600}
+[data-style="toon"] .nav-item.on{border:2.5px solid var(--toon-out)}
+[data-style="toon"] .person .av{border:2.5px solid var(--toon-out)}
+[data-style="toon"] .trow:hover{background:var(--panel-2)}
+[data-style="toon"] .statline .v{font-family:"Luckiest Guy","Fredoka",cursive;-webkit-text-stroke:1px var(--toon-out);paint-order:stroke fill}
+/* a cartoon is pale whatever the theme says, so force the readable ground */
+[data-theme="dark"][data-style="toon"]{--bg:#fbeed2;--panel:#fffdf6;--ink:#1a1512;--ink-strong:#14110f}
+
+/* --------------------------------------------------------------------------
    2. Base
    -------------------------------------------------------------------------- */
 *{box-sizing:border-box;margin:0;padding:0}
@@ -597,6 +782,43 @@ a:hover{text-decoration:underline}
 .inbox-item .when{margin-top:6px;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .inbox-item .mover{display:flex;gap:8px;align-items:center;flex:0 0 auto;width:300px}
 @media (max-width:860px){.inbox-item{flex-direction:column;gap:12px}.inbox-item .mover{width:100%}}
+
+/* images -------------------------------------------------------------------- */
+.shots{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.shot{
+  position:relative;width:104px;height:78px;border-radius:var(--radius-xs);
+  overflow:hidden;border:1px solid var(--line);background:var(--panel-2);
+  display:flex;align-items:center;justify-content:center;cursor:zoom-in;
+}
+[data-style="toon"] .shot,[data-style="brutal"] .shot{border:2.5px solid var(--ink-strong)}
+.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.shot .ph{font-size:10px;color:var(--ink-faint);letter-spacing:.1em}
+.shot .kill{
+  position:absolute;top:3px;right:3px;width:19px;height:19px;border-radius:50%;
+  background:rgba(8,10,14,.74);color:#fff;font-size:11px;line-height:1;
+  display:none;align-items:center;justify-content:center;
+}
+.shot:hover .kill{display:flex}
+body.readonly .shot .kill{display:none !important}
+.shot.broken{cursor:default}
+
+.shot-drop{
+  display:flex;align-items:center;gap:10px;margin-top:10px;
+  font-size:10.5px;color:var(--ink-faint);
+}
+.shot-drop input[type="file"]{display:none}
+
+/* full-size viewer */
+.lightbox{
+  position:fixed;inset:0;z-index:260;display:none;
+  background:rgba(4,6,10,.88);padding:28px;
+  align-items:center;justify-content:center;cursor:zoom-out;
+}
+.lightbox.on{display:flex}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+.lightbox .close{
+  position:absolute;top:16px;right:20px;color:#fff;font-size:22px;opacity:.8;
+}
 
 /* shared -------------------------------------------------------------------- */
 .person{

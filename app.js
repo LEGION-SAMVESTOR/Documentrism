@@ -16,8 +16,8 @@
 const S = {
   user: null,
   prefs: {
-    mode: "signal", theme: "dark", accent: "default", font: "mono",
-    fsize: "m", density: "comfortable", anim: "on", custom_css: ""
+    mode: "signal", theme: "dark", style: "plain", accent: "default",
+    font: "mono", fsize: "m", density: "comfortable", anim: "on", custom_css: ""
   },
   shares: { incoming: [], outgoing: [] },
   sharedPerson: null,      // whose shared items are open, if any
@@ -176,7 +176,7 @@ function sync(state, text) {
 /* ==========================================================================
    Skin — mode, theme, custom CSS
    ========================================================================== */
-const SKIN_KEYS = ["mode", "theme", "accent", "font", "fsize", "density", "anim"];
+const SKIN_KEYS = ["mode", "theme", "style", "accent", "font", "fsize", "density", "anim"];
 
 function applySkin() {
   const d = document.documentElement.dataset;
@@ -188,6 +188,7 @@ function applySkin() {
   const t = $("#stTheme");
   if (t) t.textContent = S.prefs.theme === "dark" ? "Dark" : "Light";
   $$("[data-mode-pick]").forEach(b => b.classList.toggle("on", b.dataset.modePick === S.prefs.mode));
+  set("#stStyle", S.prefs.style);
   set("#stAccent", S.prefs.accent);
   set("#stFont", S.prefs.font);
   set("#stSize", S.prefs.fsize);
@@ -405,7 +406,9 @@ function refreshLists() {
   fillSelect($("#qaType"), L.types, { blank: "No type" });
   fillSelect($("#nhType"), L.types, { blank: "No type" });
   fillSelect($("#nhStatus"), L.statuses, { value: "Active" });
-  $("#clientList").innerHTML = L.clients.map(c => `<option value="${esc(c)}"></option>`).join("");
+  // Client is a dropdown, not free text — the server refuses anything that is
+  // not on the Lists tab, so the field must not let you type one.
+  fillSelect($("#nhClient"), L.clients, { blank: "No client" });
 }
 
 function refreshHeadPickers() {
@@ -639,6 +642,7 @@ function noteHtml(n) {
       </div>
     </div>
     ${chips.length ? `<div class="note-chips">${chips.join("")}</div>` : ""}
+    ${shotsHtml(n)}
     <div class="note-detail">
       <div class="field"><label>Note text</label>
         <textarea class="ta" data-f="text" rows="2">${esc(n.text)}</textarea></div>
@@ -658,6 +662,17 @@ function noteHtml(n) {
       </div>
     </div>
   </div>`;
+}
+
+/** Placeholders now; hydrateImages() fetches the bytes and fills them in. */
+function shotsHtml(n) {
+  const ids = imageIdsOf(n);
+  if (!ids.length) return "";
+  return `<div class="shots">` + ids.map(id => `
+    <div class="shot" data-img="${esc(id)}" data-note="${esc(n.note_id)}">
+      <span class="ph">loading</span>
+      <span class="kill" title="Remove this image">✕</span>
+    </div>`).join("") + `</div>`;
 }
 
 function findNote(id) {
@@ -686,7 +701,13 @@ function wireNotes(scope) {
       }
       if (act === "save") saveNoteFromUi(el, id);
     }));
+
+    $$(".shot .kill", el).forEach(k => on(k, "click", ev => {
+      ev.stopPropagation();
+      removeImage(id, k.closest(".shot").dataset.img);
+    }));
   });
+  hydrateImages(scope);
 }
 
 /** Keeps the Needs-detail counter true when a flag is turned on or off. */
@@ -706,6 +727,8 @@ function saveNoteFromUi(el, id) {
     needs_detail: $('[data-f="needs_detail"]', el).checked ? "Yes" : "No"
   };
   if (!patch.text) { toast("A note needs some text.", "bad"); return; }
+  const badLink = linkProblem(patch.link);
+  if (badLink) { toast(badLink, "bad"); return; }
 
   flagDelta(n.needs_detail, patch.needs_detail);
   Object.assign(n, patch);
@@ -751,6 +774,17 @@ function patchHead(patch, repaint) {
   API.enqueue({ action: "updateHead", payload: { head_id: h.head_id, patch } });
 }
 
+/** Images pasted or dropped before the note exists wait here for its id. */
+let pendingShots = [];
+
+function showPending() {
+  const hint = $("#hNoteText");
+  if (!hint) return;
+  hint.placeholder = pendingShots.length
+    ? `${pendingShots.length} image${pendingShots.length === 1 ? "" : "s"} will attach — now write the line.`
+    : "What did you just do? One line is enough.";
+}
+
 function addNoteHere() {
   if (S.readonly) { toast("This was shared with you — you can't add to it.", "bad"); return; }
   const ta = $("#hNoteText");
@@ -758,11 +792,14 @@ function addNoteHere() {
   if (!text) { ta.focus(); return; }
   const h = S.current.head;
   ta.value = "";
-  addNoteOptimistic(text, h.head_id, "");
+  const shots = pendingShots;
+  pendingShots = [];
+  showPending();
+  addNoteOptimistic(text, h.head_id, "", shots);
 }
 
 /** Draws the note at once, then sends it. The queue owns the retry. */
-function addNoteOptimistic(text, headId, type) {
+function addNoteOptimistic(text, headId, type, shots) {
   const now = new Date().toISOString();
   const temp = {
     note_id: "tmp-" + Date.now(), head_id: headId || "", created_at: now,
@@ -796,6 +833,8 @@ function addNoteOptimistic(text, headId, type) {
       }
       const j = S.inbox.indexOf(temp);
       if (j > -1) { S.inbox[j] = saved; renderInbox(); }
+      // Images could not be attached before the note had an id.
+      if (shots && shots.length) attachImages(saved.note_id, shots);
     },
     fail: () => { temp._pending = false; temp._failed = true; redraw(); }
   });
@@ -820,6 +859,7 @@ function renderInbox() {
         <div class="txt">${esc(n.text)}</div>
         <div class="when">${esc(fullOf(n.created_at))} · ${esc(ago(n.created_at))}${
           n.type ? " · " + esc(n.type) : ""}</div>
+        ${shotsHtml(n)}
       </div>
       <div class="mover">
         <select class="sel" data-move><option value="">Move to head…</option>
@@ -838,7 +878,12 @@ function renderInbox() {
       moveFromInbox(id, sel.value);
     });
     on($("[data-drop]", el), "click", () => archiveNoteUi(id));
+    $$(".shot .kill", el).forEach(k => on(k, "click", ev => {
+      ev.stopPropagation();
+      removeImage(id, k.closest(".shot").dataset.img);
+    }));
   });
+  hydrateImages(box);
 }
 
 function moveFromInbox(noteId, headId) {
@@ -849,6 +894,154 @@ function moveFromInbox(noteId, headId) {
   renderInbox(); renderHeads(); paintStats();
   API.enqueue({ action: "moveNote", payload: { note_id: noteId, head_id: headId } });
   toast(`Moved into ${head ? head.title : "the head"}.`, "good");
+}
+
+/* ==========================================================================
+   Validation
+
+   The same rules the server enforces, checked here so the problem is named
+   while you are still looking at the field rather than after a round trip.
+   ========================================================================== */
+const HAS_LETTER = /[A-Za-zÀ-ɏऀ-ॿ]/;
+
+function titleProblem(value) {
+  const title = String(value || "").trim();
+  if (!title) return "A head needs a title.";
+  if (title.length < 2) return "That title is too short — give it at least 2 characters.";
+  if (!HAS_LETTER.test(title)) {
+    return `A title needs at least one letter — "${title}" on its own won't mean anything later.`;
+  }
+  return "";
+}
+
+function linkProblem(value) {
+  const link = String(value || "").trim();
+  if (!link) return "";
+  if (!/^https?:\/\/[^\s/$.?#][^\s]*$/i.test(link)) {
+    return "A link must start with http:// or https://";
+  }
+  return "";
+}
+
+/** Marks a field as wrong and returns false, so callers can chain checks. */
+function flagField(sel, problem) {
+  const el = $(sel);
+  if (!el) return !problem;
+  if (problem) {
+    el.style.borderColor = "var(--red)";
+    el.focus();
+  } else {
+    el.style.borderColor = "";
+  }
+  return !problem;
+}
+
+/* ==========================================================================
+   Images in notes
+
+   The sheet holds file ids, not pictures — a cell is about 50,000 characters.
+   Uploads are resized here first so a 6MB phone screenshot does not become a
+   6MB round trip, and fetched bytes are cached, because every fetch costs a
+   full second against Apps Script.
+   ========================================================================== */
+const MAX_EDGE = 1400;
+const imageCache = new Map();        // image_id -> data: URL
+
+/** Shrinks to fit MAX_EDGE and re-encodes, so uploads stay small. */
+function shrinkImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That file is not an image this app can read."));
+      img.onload = () => {
+        const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+        if (scale === 1 && reader.result.length < 900000) { resolve(reader.result); return; }
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        // PNG keeps screenshots of text crisp; photos go to JPEG for size.
+        const asPng = /png/i.test(file.type) && c.width * c.height < 1200000;
+        resolve(c.toDataURL(asPng ? "image/png" : "image/jpeg", 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function attachImages(noteId, files) {
+  const list = Array.from(files).filter(f => /^image\//.test(f.type));
+  if (!list.length) return;
+
+  for (const file of list) {
+    try {
+      const dataUrl = await shrinkImage(file);
+      sync("saving", "Uploading image");
+      const res = await API.call("addNoteImage", {
+        note_id: noteId, data_url: dataUrl, name: file.name
+      });
+      imageCache.set(res.image_id, dataUrl);          // already have the bytes
+      const n = findNote(noteId);
+      if (n) { n.images = (res.images || []).join(","); }
+      if (S.current) renderNotes();
+      renderInbox();
+      sync("saved", "Saved");
+    } catch (e) {
+      toast(e.message, "bad");
+      sync("failed", e.message);
+    }
+  }
+}
+
+function imageIdsOf(note) {
+  return String(note.images || "").split(",").map(s => s.trim()).filter(Boolean);
+}
+
+/** Fills in the <img> tags that renderNotes left as placeholders. */
+async function hydrateImages(scope) {
+  for (const box of $$(".shot[data-img]", scope)) {
+    const id = box.dataset.img;
+    if (box.dataset.done) continue;
+    box.dataset.done = "1";
+
+    if (imageCache.has(id)) { paintShot(box, imageCache.get(id)); continue; }
+    try {
+      const res = await API.call("getImage", { image_id: id });
+      const url = `data:${res.mime};base64,${res.data}`;
+      imageCache.set(id, url);
+      paintShot(box, url);
+    } catch (e) {
+      box.classList.add("broken");
+      box.innerHTML = `<span class="ph">gone</span>`;
+    }
+  }
+}
+
+function paintShot(box, url) {
+  const kill = box.querySelector(".kill");
+  box.innerHTML = `<img src="${url}" alt="">`;
+  if (kill) box.appendChild(kill);
+  on(box, "click", e => {
+    if (e.target.classList.contains("kill")) return;
+    $("#lightboxImg").src = url;
+    $("#lightbox").classList.add("on");
+  });
+}
+
+async function removeImage(noteId, imageId) {
+  const n = findNote(noteId);
+  if (n) n.images = imageIdsOf(n).filter(i => i !== imageId).join(",");
+  if (S.current) renderNotes();
+  renderInbox();
+  try {
+    await API.call("removeNoteImage", { note_id: noteId, image_id: imageId });
+    toast("Image removed. It's in your Drive trash.", "good");
+  } catch (e) {
+    toast(e.message, "bad");
+  }
 }
 
 /* ==========================================================================
@@ -1069,7 +1262,11 @@ function quickSave() {
 
 async function createHeadFromDialog() {
   const title = $("#nhTitle").value.trim();
-  if (!title) { showErr("#nhErr", "A head needs a title."); $("#nhTitle").focus(); return; }
+
+  const bad = titleProblem(title) || linkProblem($("#nhLink").value);
+  flagField("#nhTitle", titleProblem(title));
+  flagField("#nhLink", linkProblem($("#nhLink").value));
+  if (bad) { showErr("#nhErr", bad); return; }
   clearErr("#nhErr");
 
   const data = {
@@ -1348,6 +1545,7 @@ function wireSettings() {
     S.prefs[key] = e.target.value;
     applySkin();
   });
+  bind("#stStyle", "style");
   bind("#stAccent", "accent");
   bind("#stFont", "font");
   bind("#stSize", "fsize");
@@ -1410,15 +1608,49 @@ function wire() {
 
   on($("#hNoteAdd"), "click", addNoteHere);
   on($("#hNoteText"), "keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNoteHere(); } });
+
+  /* paste or drop a picture straight into the note you are writing */
+  on($("#hNoteText"), "paste", e => {
+    const files = Array.from(e.clipboardData?.files || []).filter(f => /^image\//.test(f.type));
+    if (!files.length) return;
+    e.preventDefault();
+    pendingShots = pendingShots.concat(files);
+    showPending();
+    toast(`${files.length} image${files.length === 1 ? "" : "s"} ready — write the line and press Enter.`, "");
+  });
+  const composer = $(".composer");
+  ["dragover", "drop"].forEach(ev => on(composer, ev, e => {
+    e.preventDefault();
+    if (ev !== "drop") return;
+    const files = Array.from(e.dataTransfer?.files || []).filter(f => /^image\//.test(f.type));
+    if (!files.length) return;
+    pendingShots = pendingShots.concat(files);
+    showPending();
+    toast(`${files.length} image${files.length === 1 ? "" : "s"} ready — write the line and press Enter.`, "");
+  }));
+
+  /* full-size image viewer */
+  on($("#lightbox"), "click", () => $("#lightbox").classList.remove("on"));
   on($("#hTitle"), "change", e => {
     const v = e.target.value.trim();
-    if (!v) { e.target.value = S.current.head.title; return; }
+    const bad = titleProblem(v);
+    if (bad) {
+      toast(bad, "bad");
+      e.target.value = S.current.head.title;      // put the good one back
+      return;
+    }
     patchHead({ title: v });
   });
   on($("#hClient"), "change", e => patchHead({ client: e.target.value }));
   on($("#hType"), "change", e => patchHead({ type: e.target.value }));
   on($("#hStatus"), "change", e => patchHead({ status: e.target.value }));
-  on($("#hLink"), "change", e => patchHead({ link: e.target.value.trim() }));
+  on($("#hLink"), "change", e => {
+    const v = e.target.value.trim();
+    const bad = linkProblem(v);
+    flagField("#hLink", bad);
+    if (bad) { toast(bad, "bad"); return; }
+    patchHead({ link: v });
+  });
   on($("#hFlag"), "change", e => patchHead({ needs_detail: e.target.checked ? "Yes" : "No" }));
   on($("#hExpand"), "click", () => {
     const ta = $("#hDetails");
@@ -1467,6 +1699,10 @@ function wire() {
     const mod = e.ctrlKey || e.metaKey;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
 
+    if (e.key === "Escape" && $("#lightbox").classList.contains("on")) {
+      $("#lightbox").classList.remove("on");
+      return;
+    }
     if (e.key === "Escape" && anyDialogOpen()) {
       $$(".scrim.on").forEach(sc => closeDialog("#" + sc.id));
       return;

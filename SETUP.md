@@ -227,10 +227,50 @@ name opens that person's items.
 - **Terminal** — a console. Green on black, square edges, and a command line.
 - **Paper** — quiet and serif, for reading and writing long details.
 
-Each works in light or dark, and on top of the mode you can set the **accent
-colour**, **typeface** (mono, sans or serif), **text size**, **density**
-(compact fits more rows on screen) and turn **animations** off. All of it is
-saved to your account, so it follows you to another computer.
+Each works in light or dark. On top of the mode you can set:
+
+| Option | Choices |
+| --- | --- |
+| Surface style | Plain · Glass · Neo · Flat · Brutal · Cartoon |
+| Accent colour | Mode default · Emerald · Amber · Violet · Magenta · Crimson |
+| Typeface | Mono · Sans · Serif |
+| Text size | Small · Medium · Large |
+| Density | Comfortable · Compact (more rows on screen) |
+| Animations | On · Off |
+
+**Surface style** is the LEDGER set: *Glass* is frosted and translucent, *Neo*
+is soft extruded plastic, *Flat* has hairlines and no depth, *Brutal* is heavy
+ink borders with hard offset shadows, and *Cartoon* is LEDGER's toon look —
+cream paper with dots, chunky outlines and comic lettering.
+
+All of it is saved to your account, so it follows you to another computer.
+
+## Pictures in notes
+
+Paste an image straight into the note box, or drag one onto it, then write your
+line and press Enter — the picture attaches once the note is saved. Click a
+thumbnail to see it full size, or the ✕ on it to remove it.
+
+Pictures are shrunk to 1400px before upload, so a big phone screenshot does not
+take forever. They go to a **private folder in your Google Drive** called
+*Documentrism Images*, and they are read back through the app, not by a public
+link — so a picture on a shared note follows the same rule as the note itself.
+Removing one puts it in your Drive trash rather than destroying it.
+
+Limits: 8 pictures per note, 4MB each after shrinking.
+
+## What the app will not accept
+
+- A head **title** must have at least one letter and be 2 characters or more.
+  "2026" on its own is refused — in a month it would tell you nothing.
+- A **client** must be chosen from the dropdown. To add a new one, put it in
+  the **clients** column on the **Lists** tab; it appears next time the app
+  loads.
+- A **link** must start with `http://` or `https://`, or be empty.
+- **Type** and **status** must come from the Lists tab too.
+
+Each rule is checked in the browser *and* again on the server, so nothing
+invalid reaches the sheet even if someone bypasses the screen.
 
 ## The command line (Terminal mode)
 

@@ -43,10 +43,10 @@ var COLS = {
   Heads:    ['head_id', 'owner_id', 'created_at', 'title', 'client', 'type',
              'status', 'needs_detail', 'link', 'details', 'updated_at', 'archived'],
   Notes:    ['note_id', 'owner_id', 'head_id', 'created_at', 'text', 'type',
-             'link', 'details', 'needs_detail', 'updated_at', 'archived'],
+             'link', 'details', 'needs_detail', 'images', 'updated_at', 'archived'],
   Lists:    ['clients', 'types', 'statuses'],
-  Prefs:    ['owner_id', 'mode', 'theme', 'accent', 'font', 'fsize', 'density',
-             'anim', 'custom_css', 'updated_at'],
+  Prefs:    ['owner_id', 'mode', 'theme', 'style', 'accent', 'font', 'fsize',
+             'density', 'anim', 'custom_css', 'updated_at'],
   Shares:   ['share_id', 'owner_id', 'target_id', 'kind', 'item_id',
              'created_at', 'revoked']
 };
@@ -101,7 +101,7 @@ var PUBLIC_ACTIONS = { ping: 1, signup: 1, login: 1, resetPassword: 1 };
 var WRITE_ACTIONS = {
   createHead: 1, createNote: 1, updateHead: 1, updateNote: 1, moveNote: 1,
   archiveHead: 1, archiveNote: 1, addClient: 1, savePrefs: 1,
-  shareItem: 1, unshareItem: 1
+  shareItem: 1, unshareItem: 1, addNoteImage: 1, removeNoteImage: 1
 };
 
 var OP_TTL_SECONDS = 900;
@@ -197,6 +197,11 @@ function dispatch_(action, body, user) {
       case 'listShares':    return doListShares(user);
       case 'shareItem':     return doShareItem(user, body.kind, body.item_id, body.to);
       case 'unshareItem':   return doUnshareItem(user, body.share_id);
+
+      /* --- images --- */
+      case 'addNoteImage':    return doAddNoteImage(user, body.note_id, body.data_url, body.name);
+      case 'getImage':        return doGetImage(user, body.image_id);
+      case 'removeNoteImage': return doRemoveNoteImage(user, body.note_id, body.image_id);
 
       default:
         return { ok: false, error: 'Unknown action: ' + action, code: 'bad_request' };
@@ -308,6 +313,57 @@ function newId_(prefix) {
 
 function yes_(v) { return String(v).trim().toLowerCase() === 'yes'; }
 function str_(v) { return String(v === null || v === undefined ? '' : v).trim(); }
+
+/* ========================================================================== */
+/* Validation                                                                 */
+/* ========================================================================== */
+
+/**
+ * A title has to be something you could read back in a week and recognise.
+ * "4" or "2026" is a number, not a piece of work, so a title must carry at
+ * least one letter and be at least two characters long.
+ */
+function checkTitle_(value) {
+  var title = str_(value);
+  if (!title) { fail_('A head needs a title.', 'bad_request'); }
+  if (title.length < 2) { fail_('That title is too short — give it at least 2 characters.', 'bad_request'); }
+  if (!/[A-Za-zÀ-ɏऀ-ॿ]/.test(title)) {
+    fail_('A title needs at least one letter — "' + title + '" on its own will not mean anything later.', 'bad_request');
+  }
+  return title;
+}
+
+/** Empty, or a real web address. Nothing else — javascript: least of all. */
+function checkLink_(value) {
+  var link = str_(value);
+  if (!link) { return ''; }
+  if (!/^https?:\/\/[^\s/$.?#][^\s]*$/i.test(link)) {
+    fail_('A link must start with http:// or https:// — got "' + link + '".', 'bad_request');
+  }
+  return link;
+}
+
+/** Empty, or one of the values on the Lists tab. No free text. */
+function checkClient_(value) {
+  var client = str_(value);
+  if (!client) { return ''; }
+  var allowed = getLists_().clients;
+  for (var i = 0; i < allowed.length; i++) {
+    if (allowed[i].toLowerCase() === client.toLowerCase()) { return allowed[i]; }
+  }
+  fail_('"' + client + '" is not in the client list. Add it on the Lists tab first.', 'bad_request');
+}
+
+/** Empty, or one of the values on the Lists tab, for type and status. */
+function checkFromList_(value, listName, label) {
+  var v = str_(value);
+  if (!v) { return ''; }
+  var allowed = getLists_()[listName] || [];
+  for (var i = 0; i < allowed.length; i++) {
+    if (allowed[i].toLowerCase() === v.toLowerCase()) { return allowed[i]; }
+  }
+  fail_('"' + v + '" is not a valid ' + label + '.', 'bad_request');
+}
 
 /** Reentrant: an inner withLock_ inside an outer one must not deadlock. */
 var LOCK_DEPTH_ = 0;
@@ -638,6 +694,7 @@ function doLogout(token) {
 var PREF_CHOICES = {
   mode:    ['signal', 'terminal', 'paper'],
   theme:   ['dark', 'light'],
+  style:   ['plain', 'glass', 'neo', 'flat', 'brutal', 'toon'],
   accent:  ['default', 'emerald', 'amber', 'violet', 'magenta', 'crimson'],
   font:    ['mono', 'sans', 'serif'],
   fsize:   ['s', 'm', 'l'],
@@ -647,8 +704,8 @@ var PREF_CHOICES = {
 
 function defaultPrefs_() {
   return {
-    mode: 'signal', theme: 'dark', accent: 'default', font: 'mono',
-    fsize: 'm', density: 'comfortable', anim: 'on', custom_css: ''
+    mode: 'signal', theme: 'dark', style: 'plain', accent: 'default',
+    font: 'mono', fsize: 'm', density: 'comfortable', anim: 'on', custom_css: ''
   };
 }
 
@@ -894,8 +951,11 @@ function notesOfHead_(headId) {
 
 function doCreateHead(user, data) {
   data = data || {};
-  var title = str_(data.title);
-  if (!title) { fail_('A head needs a title.', 'bad_request'); }
+  var title = checkTitle_(data.title);
+  var client = checkClient_(data.client);
+  var link = checkLink_(data.link);
+  var type = checkFromList_(data.type, 'types', 'type');
+  var status = checkFromList_(data.status, 'statuses', 'status') || 'Active';
 
   return withLock_(function () {
     var t = table_(TAB.HEADS);
@@ -905,17 +965,16 @@ function doCreateHead(user, data) {
       owner_id: str_(user.user_id),
       created_at: now,
       title: title,
-      client: str_(data.client),
-      type: str_(data.type),
-      status: str_(data.status) || 'Active',
+      client: client,
+      type: type,
+      status: status,
       needs_detail: data.needs_detail === 'Yes' ? 'Yes' : 'No',
-      link: str_(data.link),
+      link: link,
       details: String(data.details || ''),
       updated_at: now,
       archived: 'No'
     };
     appendRow_(t, rec);
-    if (rec.client) { ensureListValue_('clients', rec.client); }
     queueReport_();
     var out = clean_(rec, COLS.Heads);
     out.note_count = 0;
@@ -929,12 +988,15 @@ function doUpdateHead(user, headId, patch) {
     var allowed = ['title', 'client', 'type', 'status', 'needs_detail', 'link', 'details', 'archived'];
     var write = {};
     allowed.forEach(function (k) { if (patch && k in patch) { write[k] = patch[k]; } });
-    if (write.title !== undefined && !str_(write.title)) {
-      fail_('A head needs a title.', 'bad_request');
-    }
+
+    if (write.title !== undefined) { write.title = checkTitle_(write.title); }
+    if (write.client !== undefined) { write.client = checkClient_(write.client); }
+    if (write.link !== undefined) { write.link = checkLink_(write.link); }
+    if (write.type !== undefined) { write.type = checkFromList_(write.type, 'types', 'type'); }
+    if (write.status !== undefined) { write.status = checkFromList_(write.status, 'statuses', 'status'); }
+
     write.updated_at = new Date();
     patchRow_(found.t, found.rowNum, write);
-    if (write.client) { ensureListValue_('clients', str_(write.client)); }
     queueReport_();
     return { ok: true, updated_at: write.updated_at.toISOString() };
   });
@@ -957,10 +1019,11 @@ function doCreateNote(user, data) {
       head_id: headId,
       created_at: now,
       text: text,
-      type: str_(data.type),
-      link: str_(data.link),
+      type: checkFromList_(data.type, 'types', 'type'),
+      link: checkLink_(data.link),
       details: String(data.details || ''),
       needs_detail: data.needs_detail === 'Yes' ? 'Yes' : 'No',
+      images: '',
       updated_at: now,
       archived: 'No'
     };
@@ -981,6 +1044,8 @@ function doUpdateNote(user, noteId, patch) {
     if (write.text !== undefined && !str_(write.text)) {
       fail_('A note needs some text.', 'bad_request');
     }
+    if (write.link !== undefined) { write.link = checkLink_(write.link); }
+    if (write.type !== undefined) { write.type = checkFromList_(write.type, 'types', 'type'); }
     if (write.head_id) { requireOwnHead_(user, write.head_id); }
 
     var now = new Date();
@@ -1040,6 +1105,126 @@ function doExportAll(user) {
       notes: notes
     }
   };
+}
+
+/* ========================================================================== */
+/* Images                                                                     */
+/* ========================================================================== */
+
+/**
+ * Pictures do not go in the sheet — a cell holds about 50,000 characters, which
+ * is a thumbnail at best. They go to a private folder in the owner's Drive and
+ * the note keeps the file ids.
+ *
+ * The files are NOT shared publicly. They are read back through getImage,
+ * which checks the caller can see the note first, so a shared note's pictures
+ * follow the same rule as its text and nothing is reachable by guessing a URL.
+ */
+
+var IMAGE_FOLDER_NAME = 'Documentrism Images';
+var MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+var MAX_IMAGES_PER_NOTE = 8;
+
+function imageFolder_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('image_folder_id');
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* deleted: remake it */ }
+  }
+  var existing = DriveApp.getFoldersByName(IMAGE_FOLDER_NAME);
+  var folder = existing.hasNext() ? existing.next() : DriveApp.createFolder(IMAGE_FOLDER_NAME);
+  props.setProperty('image_folder_id', folder.getId());
+  return folder;
+}
+
+function imageIdsOf_(note) {
+  return str_(note.images).split(',')
+    .map(function (s) { return s.trim(); })
+    .filter(function (s) { return s; });
+}
+
+function doAddNoteImage(user, noteId, dataUrl, name) {
+  var found = requireOwnNote_(user, noteId);
+
+  var m = /^data:(image\/(png|jpeg|jpg|gif|webp));base64,([A-Za-z0-9+/=]+)$/i.exec(String(dataUrl || ''));
+  if (!m) { fail_('That is not an image this app can take (PNG, JPEG, GIF or WebP).', 'bad_request'); }
+  var mime = m[1].toLowerCase();
+  var b64 = m[3];
+  if (b64.length * 0.75 > MAX_IMAGE_BYTES) {
+    fail_('That image is too big. Keep it under 4MB.', 'bad_request');
+  }
+
+  var current = imageIdsOf_(clean_(toObj_(found.t, found.row, COLS.Notes), COLS.Notes));
+  if (current.length >= MAX_IMAGES_PER_NOTE) {
+    fail_('A note can hold ' + MAX_IMAGES_PER_NOTE + ' images.', 'bad_request');
+  }
+
+  return withLock_(function () {
+    var safeName = str_(name).replace(/[^\w.\- ]/g, '').slice(0, 60) || 'image';
+    var blob = Utilities.newBlob(Utilities.base64Decode(b64), mime,
+      noteId + '-' + Date.now() + '-' + safeName);
+    var file = imageFolder_().createFile(blob);
+    // Explicitly private: only the owner of the script can open it in Drive.
+    try { file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE); } catch (e) {}
+
+    current.push(file.getId());
+    patchRow_(found.t, found.rowNum, { images: current.join(','), updated_at: new Date() });
+    return { ok: true, image_id: file.getId(), images: current };
+  });
+}
+
+/** Returns the bytes, but only to someone allowed to read the note. */
+function doGetImage(user, imageId) {
+  imageId = str_(imageId);
+  if (!imageId) { fail_('No image asked for.', 'bad_request'); }
+
+  var nt = table_(TAB.NOTES);
+  var idCol = col_(nt, 'note_id'), ownerCol = col_(nt, 'owner_id'), headCol = col_(nt, 'head_id');
+  var imgCol = nt.idx.images;
+  if (imgCol === undefined) { fail_('This sheet has no images column yet.', 'config'); }
+
+  var me = str_(user.user_id);
+  var allowed = false;
+  for (var i = 0; i < nt.rows.length; i++) {
+    var r = nt.rows[i];
+    if (!str_(r[idCol])) { continue; }
+    if (str_(r[imgCol]).indexOf(imageId) === -1) { continue; }
+
+    if (str_(r[ownerCol]) === me) { allowed = true; break; }
+    if (sharedWithMe_(user, 'note', str_(r[idCol]))) { allowed = true; break; }
+    var hid = str_(r[headCol]);
+    if (hid && sharedWithMe_(user, 'head', hid)) { allowed = true; break; }
+    break;                       // found the note, but it is not ours to read
+  }
+  if (!allowed) { fail_('That image does not exist.', 'not_found'); }
+
+  var file;
+  try { file = DriveApp.getFileById(imageId); }
+  catch (e) { fail_('That image is no longer in Drive.', 'not_found'); }
+
+  var blob = file.getBlob();
+  return {
+    ok: true,
+    image_id: imageId,
+    mime: blob.getContentType(),
+    data: Utilities.base64Encode(blob.getBytes())
+  };
+}
+
+function doRemoveNoteImage(user, noteId, imageId) {
+  var found = requireOwnNote_(user, noteId);
+  imageId = str_(imageId);
+
+  return withLock_(function () {
+    var current = imageIdsOf_(clean_(toObj_(found.t, found.row, COLS.Notes), COLS.Notes));
+    var next = current.filter(function (id) { return id !== imageId; });
+    patchRow_(found.t, found.rowNum, { images: next.join(','), updated_at: new Date() });
+
+    // The row keeps no reference, so the file is rubbish now — but Drive's own
+    // trash is the undo, so it is trashed rather than destroyed.
+    try { DriveApp.getFileById(imageId).setTrashed(true); } catch (e) {}
+    return { ok: true, images: next };
+  });
 }
 
 /* ========================================================================== */
