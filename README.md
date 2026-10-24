@@ -156,6 +156,15 @@ Optimistic rows carry a `tmp-…` id and are swapped for the real row on success
 A head may sit under another, up to `MAX_DEPTH` (4) levels. `parent_id` on
 Heads holds it.
 
+**Sub-heads do not appear in the Heads tab.** They are part of one piece of
+work, and listing them alongside top-level heads doubles the list for no gain.
+They live on their parent's page; the parent's row carries a count.
+
+A sub-head takes its parent's **client, type and status** rather than carrying
+its own — it is the same work — and it **must have a link**, since its job is
+to point at where that part of the work actually lives. Both rules are applied
+on create and when an existing head is filed under another.
+
 Two things are checked on the way in rather than hoped for: a head can never
 become its own ancestor (the chain is walked upward from the proposed parent),
 and the depth cap is enforced. The picker applies the same rule in the browser
@@ -167,6 +176,25 @@ stranded out of sight — with a message saying to move or archive them first.
 In the list, children follow their parent and carry a depth attribute that
 draws the rail and indent; a head whose parent is filtered out is shown at the
 top level rather than disappearing with it.
+
+## Notes: a page, a tree, and links
+
+**A page.** Notes get long, and a two-row textarea inside a list is the wrong
+place to read one. The ↗ on any note opens `view-note`: the line at the top,
+the write-up in a box sized to the window (`min(58vh, 560px)`, or `min(72vh,
+780px)` in Wide, which hides the side panel), images at full size, and
+everything about the note down the side.
+
+**A tree.** `parent_note_id` nests notes within one head. Drag a note onto
+another to file it underneath; drop it on the timeline background to bring it
+back out. A note cannot be dropped onto its own descendant — checked in the
+browser before the drop is allowed, and again on the server. Moving a note to a
+different head clears its parent rather than stranding it.
+
+**Links.** `links` holds lateral references between any two of your notes, in
+any head. They are **symmetric**: linking A to B links B to A, because a
+one-way reference you cannot see from the other end is one you will never find
+again. Capped at 20 per note.
 
 ## Sharing
 
@@ -280,6 +308,22 @@ follows them to another computer.
 | `royal` | Deep violet and gold, formal, with a slow sheen. |
 | `blackbox` | Amber CRT: scanlines, a sweeping line, command line on. |
 | `sleek` | Near-monochrome, one pale light, almost subliminal. |
+
+A mode changes the **shape** of the page as well as its colour, through
+`--inner-max`, `--row-pad` and `--pad`:
+
+| Mode | Column | Rows | Feel |
+| --- | --- | --- | --- |
+| terminal, blackbox | full width | 8px | dense, nothing wasted |
+| signal | 1180px | 13px | the default |
+| ember, nocturne | 1240px | 15px | a touch taller |
+| runic | 1000px | 16px | narrow and formal |
+| paper, royal | 860px | 17px | a reading measure, no side panel |
+| sleek | 1320px | 18px | wide and airy |
+
+Paper and Royal also drop the head page's side panel into a single column and
+strip the chrome off the hero and filters, because a reading mode should not
+look like a dashboard.
 
 The six dark modes each have a moving backdrop, drawn in a single fixed
 `.bgfx` layer behind everything. Only `transform` and `opacity` animate,

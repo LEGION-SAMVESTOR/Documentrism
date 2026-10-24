@@ -343,6 +343,79 @@
           </div>
         </section>
 
+        <!-- one note, full page, for the long ones -->
+        <section class="view" id="view-note">
+          <div class="crumb">
+            <button data-nav="heads">Heads</button>
+            <span id="nvCrumbHead"></span>
+            <span>/</span><span class="muted">Note</span>
+          </div>
+
+          <div class="ro-banner hide" id="nvBanner"></div>
+
+          <div class="note-page">
+            <div class="np-main">
+              <div class="card">
+                <div class="card-head">
+                  <span class="eyebrow">The line</span>
+                  <div class="spacer"></div>
+                  <span class="eyebrow faint" id="nvWhen">—</span>
+                </div>
+                <div class="card-body">
+                  <textarea class="np-line" id="nvText" rows="2" placeholder="The one-line summary"></textarea>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <span class="eyebrow">Full write-up</span>
+                  <div class="spacer"></div>
+                  <span class="eyebrow faint" id="nvCount"></span>
+                  <button class="btn sm ghost" id="nvExpand">Expand</button>
+                  <button class="btn sm ghost" id="nvWide">Wide</button>
+                  <button class="btn sm pri" id="nvSave">Save</button>
+                </div>
+                <div class="card-body">
+                  <textarea class="np-details" id="nvDetails"
+                    placeholder="Everything that did not fit on one line. This box grows with the window — press Wide for the full width."></textarea>
+                </div>
+              </div>
+
+              <div class="card" id="nvShotsCard">
+                <div class="card-head"><span class="eyebrow">Images</span></div>
+                <div class="card-body"><div class="shots big" id="nvShots"></div></div>
+              </div>
+            </div>
+
+            <div class="np-side">
+              <div class="card">
+                <div class="card-head"><span class="eyebrow">About</span></div>
+                <div class="card-body props">
+                  <div class="field"><label for="nvType">Type</label><select class="sel" id="nvType"></select></div>
+                  <div class="field"><label for="nvLink">Link</label><input class="inp" id="nvLink" placeholder="https://"></div>
+                  <label class="toggle"><input type="checkbox" id="nvFlag"> Needs detail</label>
+                  <div><div class="eyebrow">In head</div><div class="ro" id="nvHead">—</div></div>
+                  <div><div class="eyebrow">Note id</div><div class="ro faint" id="nvId">—</div></div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <span class="eyebrow">Linked notes</span>
+                  <div class="spacer"></div>
+                  <button class="btn sm ghost" id="nvLinkAdd">+ Link</button>
+                </div>
+                <div id="nvLinks"></div>
+              </div>
+
+              <div class="card hide" id="nvKidsCard">
+                <div class="card-head"><span class="eyebrow">Notes under this</span></div>
+                <div id="nvKids"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="view" id="view-shared">
           <div class="page-head">
             <div>
@@ -426,6 +499,26 @@
   </div>
 </div>
 
+<!-- link a note ------------------------------------------------------- -->
+<div class="scrim" id="lnScrim">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="Link a note">
+    <div class="dialog-head"><span class="eyebrow">Link to another note</span></div>
+    <div class="dialog-body">
+      <div class="field">
+        <label for="lnSearch">Find the note</label>
+        <input class="inp" id="lnSearch" placeholder="Type a few words from it" autocomplete="off">
+      </div>
+      <div class="err" id="lnErr"></div>
+      <div id="lnResults" class="share-list"></div>
+    </div>
+    <div class="dialog-foot">
+      <span class="hint">Linking works both ways — it shows on the other note too</span>
+      <div class="spacer"></div>
+      <button class="btn ghost" data-close>Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- share ------------------------------------------------------------- -->
 <div class="scrim" id="shScrim">
   <div class="dialog" role="dialog" aria-modal="true" aria-label="Share">
@@ -480,8 +573,8 @@
 
         <button class="mode-card" data-mode-pick="ember">
           <div class="nm">Ember <span class="faint">· animated</span></div>
-          <div class="ds">Red on black. Two coals breathing slowly under the page.</div>
-          <div class="swatches"><i style="background:#0a0506"></i><i style="background:#15090b"></i><i style="background:#ff3b3b"></i><i style="background:#f0d9da"></i></div>
+          <div class="ds">Pure red on black. Two coals breathing slowly under the page.</div>
+          <div class="swatches"><i style="background:#0a0506"></i><i style="background:#15090b"></i><i style="background:#ff0000"></i><i style="background:#f0d9da"></i></div>
         </button>
         <button class="mode-card" data-mode-pick="nocturne">
           <div class="nm">Nocturne <span class="faint">· animated</span></div>
@@ -522,6 +615,7 @@
           <label for="stAccent">Accent colour</label>
           <select class="sel" id="stAccent">
             <option value="default">Mode default</option>
+            <option value="red">Pure red — #ff0000</option>
             <option value="emerald">Emerald</option>
             <option value="amber">Amber</option>
             <option value="violet">Violet</option>

@@ -237,7 +237,7 @@ Each works in light or dark. On top of the mode you can set:
 | Option | Choices |
 | --- | --- |
 | Surface style | Plain · Glass · Neo · Flat · Brutal · Cartoon |
-| Accent colour | Mode default · Emerald · Amber · Violet · Magenta · Crimson |
+| Accent colour | Mode default · **Pure red (#ff0000)** · Emerald · Amber · Violet · Magenta · Crimson |
 | Typeface | Mono · Sans · Serif |
 | Text size | Small · Medium · Large |
 | Density | Comfortable · Compact (more rows on screen) |
@@ -252,17 +252,35 @@ All of it is saved to your account, so it follows you to another computer.
 
 ## Sub-heads
 
-A head can sit under another one, up to four levels deep. Two ways:
+A head can sit under another one, up to four levels deep. Press
+**+ Add a sub-head** on a head, or pick something in **Sits under** when making
+a new one.
 
-- On a head, press **+ Add a sub-head** — the new one is filed under it.
-- In **New head**, pick something in **Sits under**.
+**Sub-heads do not show in the Heads tab.** They live on their parent's page —
+open the head and they are listed there. The parent's row shows how many it
+has. That keeps the main list to one line per piece of work.
 
-To move a head later, use **Sits under** in its Properties panel. In the list,
-sub-heads appear indented under their parent with a ↳, and a parent shows how
-many it has.
+A sub-head **needs a link**, because its job is to point at the file, sheet or
+page that part of the work lives in. It takes its parent's client, type and
+status automatically, so there is nothing else to fill in.
 
 You cannot archive a head that still has sub-heads — move or archive those
 first, so nothing gets stranded out of sight.
+
+## Notes you can actually read
+
+A note is often longer than one line. Press **↗** on any note to open it on its
+own page: a big write-up box, images full size, and everything about the note
+down the side. **Wide** hides the side panel and gives the text the whole
+screen.
+
+**Replies.** Drag a note onto another note to file it underneath — useful when
+one note answers or follows another. Drag it onto empty timeline space to pull
+it back out. You cannot drop a note onto one of its own replies.
+
+**Links.** On a note's page, press **+ Link** and search for another note.
+Linking works **both ways** — it shows on the other note too, so you can find
+your way back.
 
 ## Pictures in notes
 

@@ -31,7 +31,8 @@ const S = {
   editing: new Set(),
   shares: { incoming: [], outgoing: [] },
   sharedPerson: null,      // whose shared items are open, if any
-  readonly: false,         // the head on screen belongs to someone else
+  note: null,              // the note open on its own page, if any
+  readonly: false,         // the head or note on screen belongs to someone else
   lists: { clients: [], types: [], statuses: [] },
   heads: [],
   inbox: [],
@@ -460,6 +461,9 @@ function paintStats() {
 function visibleHeads() {
   const f = S.filters, q = f.q.trim().toLowerCase();
   return S.heads.filter(h => {
+    // Sub-heads belong to their parent's page, not this list — they are part
+    // of one piece of work, and listing them here doubles its length.
+    if (h.parent_id) return false;
     if (!f.archived && h.archived === "Yes") return false;
     if (f.client && h.client !== f.client) return false;
     if (f.type && h.type !== f.type) return false;
@@ -570,36 +574,9 @@ function emptyState(mark, title, body, action) {
           <p>${esc(body)}</p>${action || ""}</div>`;
 }
 
-/**
- * Orders heads so each sub-head follows its parent, and tags every row with
- * its depth. A head whose parent is filtered out (or archived) is shown at the
- * top level rather than vanishing with it.
- */
-function nestHeads(rows) {
-  const present = new Set(rows.map(h => h.head_id));
-  const byParent = new Map();
-  rows.forEach(h => {
-    const p = present.has(h.parent_id) ? h.parent_id : "";
-    if (!byParent.has(p)) byParent.set(p, []);
-    byParent.get(p).push(h);
-  });
-
-  const out = [];
-  const walk = (parent, depth) => {
-    (byParent.get(parent) || []).forEach(h => {
-      const kids = byParent.get(h.head_id) || [];
-      out.push({ head: h, depth, kids: kids.length });
-      if (depth < 4) walk(h.head_id, depth + 1);
-    });
-  };
-  walk("", 0);
-
-  // Anything unreachable (a loop in the data) still has to be listed.
-  if (out.length < rows.length) {
-    const shown = new Set(out.map(o => o.head.head_id));
-    rows.forEach(h => { if (!shown.has(h.head_id)) out.push({ head: h, depth: 0, kids: 0 }); });
-  }
-  return out;
+/** How many live sub-heads a head has, for the badge on its row. */
+function kidCount(headId) {
+  return S.heads.filter(h => h.parent_id === headId && h.archived !== "Yes").length;
 }
 
 function renderHeads() {
@@ -622,10 +599,12 @@ function renderHeads() {
     return;
   }
 
-  box.innerHTML = nestHeads(rows).map(({ head: h, depth, kids }) => `
-    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}" data-depth="${depth}">
+  box.innerHTML = rows.map(h => {
+    const kids = kidCount(h.head_id);
+    return `
+    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}">
       <div>
-        <div class="title">${depth ? `<span class="kidmark">↳</span>` : ""}${esc(h.title)}${
+        <div class="title">${esc(h.title)}${
           kids ? `<span class="kids">${kids} sub</span>` : ""}</div>
         <div class="sub">${h.link ? "↗ link · " : ""}created ${esc(dateOf(h.created_at))}${
           h.needs_detail === "Yes" ? " · needs detail" : ""}${
@@ -636,7 +615,8 @@ function renderHeads() {
       <div>${statusChip(h.status)}</div>
       <div class="r num c-notes">${h.note_count}</div>
       <div class="r c-when">${esc(ago(h.updated_at || h.created_at))}</div>
-    </button>`).join("");
+    </button>`;
+  }).join("");
 
   $$("#headsRows .trow").forEach(el => on(el, "click", () => openHead(el.dataset.head)));
 }
@@ -827,17 +807,36 @@ function renderNotes() {
     return;
   }
 
+  // Top-level notes carry the day headings; replies hang under their parent
+  // wherever that parent sits, so a thread stays together.
+  const kidsOf = new Map();
+  notes.forEach(n => {
+    if (!n.parent_note_id) return;
+    if (!kidsOf.has(n.parent_note_id)) kidsOf.set(n.parent_note_id, []);
+    kidsOf.get(n.parent_note_id).push(n);
+  });
+  const known = new Set(notes.map(n => n.note_id));
+
+  const branch = (n, depth) => {
+    let out = noteHtml(n, depth);
+    (kidsOf.get(n.note_id) || []).forEach(k => { out += branch(k, depth + 1); });
+    return out;
+  };
+
   let html = "", lastDay = null;
   notes.slice().reverse().forEach(n => {
+    // a reply whose parent is gone is shown as a normal note, not hidden
+    if (n.parent_note_id && known.has(n.parent_note_id)) return;
     const key = dayKey(n.created_at);
     if (key !== lastDay) {
       lastDay = key;
       html += `<div class="tl-day"><span class="lbl">${esc(dayLabel(n.created_at))}</span><span class="rule"></span></div>`;
     }
-    html += noteHtml(n);
+    html += branch(n, 0);
   });
   box.innerHTML = html;
   wireNotes(box);
+  wireNoteDrag(box);
   restoreOpenEditors(box, keep);
 }
 
@@ -886,7 +885,8 @@ function restoreOpenEditors(scope, keep) {
   });
 }
 
-function noteHtml(n) {
+function noteHtml(n, depth) {
+  depth = depth || 0;
   const state = n._pending ? " pending" : n._failed ? " failed" : "";
   const chips = [];
   if (n.type) chips.push(`<span class="chip">${esc(n.type)}</span>`);
@@ -896,13 +896,18 @@ function noteHtml(n) {
   if (n._pending) chips.push(`<span class="chip">saving…</span>`);
   if (n._failed) chips.push(`<span class="chip" style="color:var(--red)">not saved</span>`);
 
+  const links = String(n.links || "").split(",").filter(Boolean).length;
+  if (links) chips.push(`<span class="chip">${links} linked</span>`);
+
   return `
-  <div class="note${state}" data-note="${esc(n.note_id)}">
+  <div class="note${state}${depth ? " note-kid" : ""}" data-note="${esc(n.note_id)}"
+       data-depth="${depth}"${S.readonly ? "" : ' draggable="true"'}>
     <div class="note-top">
       <div class="note-text">${esc(n.text)}</div>
       <div class="note-time num">${esc(clockOf(n.created_at))}</div>
       <div class="note-acts">
-        <button class="icon-btn" data-act="expand" title="Open full details">⤢</button>
+        <button class="icon-btn" data-act="open" title="Open this note on its own page">↗</button>
+        <button class="icon-btn" data-act="expand" title="Quick edit here">⤢</button>
         <button class="icon-btn" data-act="share" title="Share this note">◈</button>
         <button class="icon-btn" data-act="archive" title="Archive this note">✕</button>
       </div>
@@ -942,6 +947,109 @@ function shotsHtml(n) {
     </div>`).join("") + `</div>`;
 }
 
+/* --------------------------------------------------------------------------
+   Drag a note onto another to file it underneath; drag it to the strip at the
+   top of the timeline to bring it back out.
+   -------------------------------------------------------------------------- */
+let dragId = null;
+
+function wireNoteDrag(scope) {
+  if (S.readonly) return;
+
+  // Dropping on the timeline itself, rather than on a note, takes a reply
+  // back out to the top level.
+  on(scope, "dragover", e => {
+    if (!dragId || e.target.closest(".note")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+  on(scope, "drop", e => {
+    if (!dragId || e.target.closest(".note")) return;
+    e.preventDefault();
+    const n = findNote(dragId);
+    if (n && n.parent_note_id) unnestNote(dragId, "");
+  });
+
+  $$(".note[draggable]", scope).forEach(el => {
+    const id = el.dataset.note;
+
+    on(el, "dragstart", e => {
+      dragId = id;
+      el.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      // Firefox refuses to start a drag without data on the transfer
+      try { e.dataTransfer.setData("text/plain", id); } catch (err) {}
+    });
+    on(el, "dragend", () => {
+      dragId = null;
+      el.classList.remove("dragging");
+      $$(".note.drop-into", scope).forEach(x => x.classList.remove("drop-into"));
+    });
+
+    on(el, "dragover", e => {
+      if (!dragId || dragId === id || isDescendant(id, dragId)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      el.classList.add("drop-into");
+    });
+    on(el, "dragleave", () => el.classList.remove("drop-into"));
+    on(el, "drop", e => {
+      e.preventDefault();
+      el.classList.remove("drop-into");
+      if (!dragId || dragId === id || isDescendant(id, dragId)) return;
+      nestNote(dragId, id);
+    });
+  });
+}
+
+/** True when `maybeKid` is somewhere below `rootId` — you cannot drop a note
+ *  onto its own reply, which would make a loop. */
+function isDescendant(maybeKid, rootId) {
+  const notes = (S.current && S.current.notes) || [];
+  const byId = new Map(notes.map(n => [n.note_id, n]));
+  let cur = byId.get(maybeKid);
+  let steps = 0;
+  while (cur && cur.parent_note_id && steps++ < 50) {
+    if (cur.parent_note_id === rootId) return true;
+    cur = byId.get(cur.parent_note_id);
+  }
+  return false;
+}
+
+function nestNote(childId, parentId) {
+  const n = findNote(childId);
+  if (!n) return;
+  const before = n.parent_note_id || "";
+  n.parent_note_id = parentId;
+  renderNotes();
+
+  API.enqueue({
+    action: "updateNote",
+    payload: { note_id: childId, patch: { parent_note_id: parentId } },
+    fail: err => {
+      n.parent_note_id = before;          // put it back where it was
+      renderNotes();
+      toast(err.message, "bad");
+    }
+  });
+  const parent = findNote(parentId);
+  toast(`Filed under "${(parent ? parent.text : "").slice(0, 40)}".`, "good", {
+    label: "Undo",
+    run: () => unnestNote(childId, before)
+  });
+}
+
+function unnestNote(childId, to) {
+  const n = findNote(childId);
+  if (!n) return;
+  n.parent_note_id = to || "";
+  renderNotes();
+  API.enqueue({
+    action: "updateNote",
+    payload: { note_id: childId, patch: { parent_note_id: to || "" } }
+  });
+}
+
 function findNote(id) {
   return (S.current?.notes || []).find(n => n.note_id === id) ||
          S.inbox.find(n => n.note_id === id) || null;
@@ -963,6 +1071,7 @@ function wireNotes(scope) {
         b.classList.toggle("on");
         if (!el.classList.contains("open")) markEditing("note:" + id, false);
       }
+      if (act === "open") openNote(id);
       if (act === "share") openShare("note", id, n.text.slice(0, 60));
       if (act === "archive") archiveNoteUi(id);
       if (act === "headings") {
@@ -1186,6 +1295,174 @@ function addNoteOptimistic(text, headId, type, shots) {
     fail: () => { temp._pending = false; temp._failed = true; redraw(); }
   });
   return temp;
+}
+
+/* ==========================================================================
+   The note page
+
+   A long note deserves a page, not a two-row textarea inside a list.
+   ========================================================================== */
+async function openNote(noteId) {
+  show("note");
+  $("#nvText").value = "";
+  $("#nvDetails").value = "";
+  $("#nvLinks").innerHTML = `<div class="emptyline">Loading…</div>`;
+  try {
+    const res = await API.call("getNote", { note_id: noteId });
+    S.note = res;
+    S.readonly = !!res.readonly;
+    paintNote();
+  } catch (e) {
+    toast(e.message, "bad");
+    show("heads");
+  }
+}
+
+function paintNote() {
+  const { note, head, linked, children, readonly } = S.note;
+  document.body.classList.toggle("readonly", !!readonly);
+
+  if (!S.editing.has("nv-text")) $("#nvText").value = note.text || "";
+  if (!S.editing.has("nv-details")) $("#nvDetails").value = note.details || "";
+  if (!S.editing.has("nv-link")) $("#nvLink").value = note.link || "";
+  $("#nvFlag").checked = note.needs_detail === "Yes";
+  $("#nvId").textContent = note.note_id;
+  $("#nvWhen").textContent = fullOf(note.created_at);
+  $("#nvHead").textContent = head ? head.title : "Inbox — not filed yet";
+  $("#nvCount").textContent = (note.details || "").length
+    ? `${(note.details || "").length.toLocaleString()} characters` : "";
+
+  fillSelect($("#nvType"), S.lists.types, { blank: "No type", value: note.type || "" });
+
+  const crumb = $("#nvCrumbHead");
+  if (head) {
+    crumb.innerHTML = `<span>/</span><button class="up" data-up>${esc(head.title)}</button>`;
+    on($("[data-up]", crumb), "click", () => openHead(head.head_id));
+  } else {
+    crumb.innerHTML = `<span>/</span><button class="up" data-nav="inbox">Inbox</button>`;
+    on($("[data-nav]", crumb), "click", () => show("inbox"));
+  }
+
+  const banner = $("#nvBanner");
+  if (readonly) {
+    const who = S.currentOwner ? S.currentOwner.name : "someone else";
+    banner.textContent = `Shared with you by ${who} — you can read this, not change it.`;
+    banner.classList.remove("hide");
+  } else {
+    banner.classList.add("hide");
+  }
+
+  /* images */
+  const shots = imageIdsOf(note);
+  $("#nvShotsCard").classList.toggle("hide", !shots.length);
+  if (shots.length) {
+    $("#nvShots").className = "shots big" + (shots.length > 1 ? " many" : "");
+    $("#nvShots").innerHTML = shots.map(id => `
+      <div class="shot" data-img="${esc(id)}" data-note="${esc(note.note_id)}">
+        <span class="ph">loading</span>
+        <span class="kill" title="Remove this image">✕</span>
+      </div>`).join("");
+    $$("#nvShots .kill").forEach(k => on(k, "click", ev => {
+      ev.stopPropagation();
+      removeImage(note.note_id, k.closest(".shot").dataset.img);
+    }));
+    hydrateImages($("#nvShots"));
+  }
+
+  renderLinkList("#nvLinks", linked, note.note_id, true);
+  const kidsCard = $("#nvKidsCard");
+  kidsCard.classList.toggle("hide", !children.length);
+  if (children.length) renderLinkList("#nvKids", children, note.note_id, false);
+}
+
+function renderLinkList(sel, rows, fromId, cuttable) {
+  const box = $(sel);
+  if (!rows.length) {
+    box.innerHTML = `<div class="emptyline">Nothing linked yet.</div>`;
+    return;
+  }
+  box.innerHTML = rows.map(n => `
+    <button class="linkrow" data-go="${esc(n.note_id)}">
+      ${cuttable && !S.readonly ? `<span class="cut" data-cut="${esc(n.note_id)}" title="Remove this link">✕</span>` : ""}
+      <div class="t">${esc(n.text)}</div>
+      <div class="m">${esc(dateOf(n.created_at))}</div>
+    </button>`).join("");
+
+  $$("[data-go]", box).forEach(el => on(el, "click", ev => {
+    if (ev.target.dataset.cut) return;
+    openNote(el.dataset.go);
+  }));
+  $$("[data-cut]", box).forEach(el => on(el, "click", async ev => {
+    ev.stopPropagation();
+    try {
+      await API.call("unlinkNotes", { note_id: fromId, other_id: el.dataset.cut });
+      toast("Link removed.", "good");
+      openNote(fromId);
+    } catch (e) { toast(e.message, "bad"); }
+  }));
+}
+
+function saveNotePage() {
+  const n = S.note.note;
+  const patch = {
+    text: $("#nvText").value.trim(),
+    details: $("#nvDetails").value,
+    type: $("#nvType").value,
+    link: $("#nvLink").value.trim(),
+    needs_detail: $("#nvFlag").checked ? "Yes" : "No"
+  };
+  if (!patch.text) { toast("A note needs some text.", "bad"); return; }
+  const badLink = linkProblem(patch.link);
+  if (badLink) { toast(badLink, "bad"); return; }
+
+  Object.assign(n, patch);
+  ["nv-text", "nv-details", "nv-link"].forEach(k => markEditing(k, false));
+  API.enqueue({ action: "updateNote", payload: { note_id: n.note_id, patch } });
+  toast("Note saved.", "good");
+}
+
+/* --- the link picker ------------------------------------------------------ */
+let linkTimer = null;
+
+function openLinkPicker() {
+  if (!S.note) return;
+  clearErr("#lnErr");
+  $("#lnSearch").value = "";
+  $("#lnResults").innerHTML = `<div class="emptyline">Type to find a note.</div>`;
+  openDialog("#lnScrim", "#lnSearch");
+}
+
+async function searchForLink(q) {
+  const box = $("#lnResults");
+  if (q.trim().length < 2) {
+    box.innerHTML = `<div class="emptyline">Type at least two characters.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="emptyline">Looking…</div>`;
+  try {
+    const res = await API.call("searchNotes", { q });
+    const me = S.note.note.note_id;
+    const already = new Set((S.note.linked || []).map(n => n.note_id));
+    const rows = (res.notes || []).filter(n => n.note_id !== me && !already.has(n.note_id));
+    if (!rows.length) { box.innerHTML = `<div class="emptyline">Nothing else matches.</div>`; return; }
+
+    box.innerHTML = rows.slice(0, 12).map(n => `
+      <button class="linkrow" data-pick="${esc(n.note_id)}">
+        <div class="t">${esc(n.text)}</div>
+        <div class="m">${esc(n.head_title || "Inbox")} · ${esc(dateOf(n.created_at))}</div>
+      </button>`).join("");
+
+    $$("[data-pick]", box).forEach(el => on(el, "click", async () => {
+      try {
+        await API.call("linkNotes", { note_id: me, other_id: el.dataset.pick });
+        closeDialog("#lnScrim");
+        toast("Linked.", "good");
+        openNote(me);
+      } catch (e) { showErr("#lnErr", e.message); }
+    }));
+  } catch (e) {
+    box.innerHTML = `<div class="emptyline">${esc(e.message)}</div>`;
+  }
 }
 
 /* ==========================================================================
@@ -1854,6 +2131,12 @@ function show(view) {
   if (view === "inbox") renderInbox();
   if (view === "heads") renderHeads();
   if (view === "shared") { renderShared(); loadShares(); }
+  if (view !== "note") document.body.classList.remove("np-wide");
+  // leaving a shared item behind means leaving read-only behind with it
+  if (view === "heads" || view === "inbox" || view === "shared") {
+    S.readonly = false;
+    document.body.classList.remove("readonly");
+  }
 }
 
 function openDialog(sel, focusSel) {
@@ -2059,6 +2342,32 @@ function wire() {
   on($("#hDetails"), "input", () => markEditing("head-details", true));
   on($("#hLink"), "input", () => markEditing("head-link", true));
   on($("#hTitle"), "input", () => markEditing("head-title", true));
+
+  /* the note page */
+  on($("#nvSave"), "click", saveNotePage);
+  on($("#nvText"), "input", () => markEditing("nv-text", true));
+  on($("#nvDetails"), "input", () => markEditing("nv-details", true));
+  on($("#nvLink"), "input", () => markEditing("nv-link", true));
+  on($("#nvType"), "change", saveNotePage);
+  on($("#nvFlag"), "change", saveNotePage);
+  on($("#nvWide"), "click", () => {
+    document.body.classList.toggle("np-wide");
+    $("#nvWide").textContent = document.body.classList.contains("np-wide") ? "Narrow" : "Wide";
+  });
+  on($("#nvExpand"), "click", () => {
+    const ta = $("#nvDetails");
+    const before = ta.value;
+    ta.value = withHeadings(before, $("#nvType").value);
+    if (ta.value === before) toast("Those headings are already there.", "");
+    markEditing("nv-details", true);
+    ta.focus();
+  });
+  on($("#nvLinkAdd"), "click", openLinkPicker);
+  on($("#lnSearch"), "input", e => {
+    clearTimeout(linkTimer);
+    const q = e.target.value;
+    linkTimer = setTimeout(() => searchForLink(q), 350);
+  });
 
   on($("#hExpand"), "click", () => {
     const ta = $("#hDetails");

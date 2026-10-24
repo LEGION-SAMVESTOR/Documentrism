@@ -31,7 +31,7 @@ var VERSION = '2.3.0';
  * that comes up every time the front end moves ahead of the backend.
  */
 var CAPABILITIES = ['accounts', 'sharing', 'images', 'validation', 'search',
-                    'subheads'];
+                    'subheads', 'notelinks', 'notetree'];
 
 /** How deep heads may nest. A head, its sub-heads, and two more levels. */
 var MAX_DEPTH = 4;
@@ -55,8 +55,9 @@ var COLS = {
   Heads:    ['head_id', 'owner_id', 'parent_id', 'created_at', 'title', 'client',
              'type', 'status', 'needs_detail', 'link', 'details', 'updated_at',
              'archived'],
-  Notes:    ['note_id', 'owner_id', 'head_id', 'created_at', 'text', 'type',
-             'link', 'details', 'needs_detail', 'images', 'updated_at', 'archived'],
+  Notes:    ['note_id', 'owner_id', 'head_id', 'parent_note_id', 'links',
+             'created_at', 'text', 'type', 'link', 'details', 'needs_detail',
+             'images', 'updated_at', 'archived'],
   Lists:    ['clients', 'types', 'statuses'],
   Prefs:    ['owner_id', 'mode', 'theme', 'style', 'accent', 'font', 'fsize',
              'density', 'anim', 'custom_css', 'updated_at'],
@@ -115,7 +116,8 @@ var PUBLIC_ACTIONS = { ping: 1, signup: 1, login: 1, resetPassword: 1 };
 var WRITE_ACTIONS = {
   createHead: 1, createNote: 1, updateHead: 1, updateNote: 1, moveNote: 1,
   archiveHead: 1, archiveNote: 1, addClient: 1, savePrefs: 1,
-  shareItem: 1, unshareItem: 1, addNoteImage: 1, removeNoteImage: 1
+  shareItem: 1, unshareItem: 1, addNoteImage: 1, removeNoteImage: 1,
+  linkNotes: 1, unlinkNotes: 1
 };
 
 var OP_TTL_SECONDS = 900;
@@ -196,6 +198,9 @@ function dispatch_(action, body, user) {
       case 'getHeads':      return { ok: true, heads: ownedHeads_(user, !!body.include_archived) };
       case 'searchNotes':   return doSearchNotes(user, body.q);
       case 'getHead':       return doGetHead(user, body.head_id);
+      case 'getNote':       return doGetNote(user, body.note_id);
+      case 'linkNotes':     return doLinkNotes(user, body.note_id, body.other_id);
+      case 'unlinkNotes':   return doUnlinkNotes(user, body.note_id, body.other_id);
       case 'createHead':    return doCreateHead(user, body.data);
       case 'updateHead':    return doUpdateHead(user, body.head_id, body.patch);
       case 'createNote':    return doCreateNote(user, body.data);
@@ -711,7 +716,7 @@ var PREF_CHOICES = {
             'royal', 'blackbox', 'sleek'],
   theme:   ['dark', 'light'],
   style:   ['plain', 'glass', 'neo', 'flat', 'brutal', 'toon'],
-  accent:  ['default', 'emerald', 'amber', 'violet', 'magenta', 'crimson'],
+  accent:  ['default', 'red', 'emerald', 'amber', 'violet', 'magenta', 'crimson'],
   font:    ['mono', 'sans', 'serif'],
   fsize:   ['s', 'm', 'l'],
   density: ['comfortable', 'compact'],
@@ -921,6 +926,12 @@ function checkParent_(user, headId, parentId) {
   return parent;
 }
 
+/** One owned head as a plain object, or throws. */
+function headById_(user, headId) {
+  var found = requireOwnHead_(user, headId);
+  return clean_(toObj_(found.t, found.row, COLS.Heads), COLS.Heads);
+}
+
 /** Live sub-heads of a head, used to stop a parent being archived under them. */
 function childrenOf_(user, headId) {
   return ownedHeads_(user, false).filter(function (h) {
@@ -1044,6 +1055,19 @@ function doCreateHead(user, data) {
   var status = checkFromList_(data.status, 'statuses', 'status') || 'Active';
   var parent = checkParent_(user, '', data.parent_id);
 
+  /* A sub-head is part of its parent's work, not a separate piece of it: it
+     takes the parent's client, type and status rather than carrying its own,
+     and it must say where the work actually lives, so a link is required. */
+  if (parent) {
+    if (!link) {
+      fail_('A sub-head needs a link — the file, sheet or page it refers to.', 'bad_request');
+    }
+    var p = headById_(user, parent);
+    client = str_(p.client);
+    type = str_(p.type);
+    status = str_(p.status) || 'Active';
+  }
+
   return withLock_(function () {
     var t = table_(TAB.HEADS);
     var now = new Date();
@@ -1080,6 +1104,18 @@ function doUpdateHead(user, headId, patch) {
 
     if (write.parent_id !== undefined) {
       write.parent_id = checkParent_(user, headId, write.parent_id);
+      if (write.parent_id) {
+        // Moving a head under another makes it a sub-head, with the same rules.
+        var cur = headById_(user, headId);
+        var theLink = write.link !== undefined ? checkLink_(write.link) : str_(cur.link);
+        if (!theLink) {
+          fail_('A sub-head needs a link. Give this head a link before filing it under another.', 'bad_request');
+        }
+        var par = headById_(user, write.parent_id);
+        write.client = str_(par.client);
+        write.type = str_(par.type);
+        write.status = str_(par.status) || 'Active';
+      }
     }
     // Archiving a head with live sub-heads would strand them out of sight.
     if (yes_(write.archived)) {
@@ -1138,9 +1174,23 @@ function doCreateNote(user, data) {
 function doUpdateNote(user, noteId, patch) {
   return withLock_(function () {
     var found = requireOwnNote_(user, noteId);
-    var allowed = ['head_id', 'text', 'type', 'link', 'details', 'needs_detail', 'archived'];
+    var allowed = ['head_id', 'text', 'type', 'link', 'details', 'needs_detail',
+                   'archived', 'parent_note_id'];
     var write = {};
     allowed.forEach(function (k) { if (patch && k in patch) { write[k] = patch[k]; } });
+
+    if (write.parent_note_id !== undefined) {
+      var cur = clean_(toObj_(found.t, found.row, COLS.Notes), COLS.Notes);
+      write.parent_note_id = checkNoteParent_(user, noteId, write.parent_note_id,
+        write.head_id !== undefined ? write.head_id : cur.head_id);
+    }
+    // Moving a note to another head would strand it under a parent elsewhere.
+    if (write.head_id !== undefined) {
+      var before = clean_(toObj_(found.t, found.row, COLS.Notes), COLS.Notes);
+      if (str_(before.parent_note_id) && str_(write.head_id) !== str_(before.head_id)) {
+        write.parent_note_id = '';
+      }
+    }
 
     if (write.text !== undefined && !str_(write.text)) {
       fail_('A note needs some text.', 'bad_request');
@@ -1206,6 +1256,174 @@ function doExportAll(user) {
       notes: notes
     }
   };
+}
+
+/* ========================================================================== */
+/* Notes: nesting and links                                                   */
+/* ========================================================================== */
+
+/**
+ * Two different relationships, deliberately kept apart:
+ *
+ *   parent_note_id  a tree, within one head. Dragging a note onto another
+ *                   files it underneath. Checked for cycles and depth.
+ *   links           lateral references between any two of your notes, in any
+ *                   head. Symmetric: linking A to B links B to A, because a
+ *                   one-way reference you cannot see from the other end is a
+ *                   reference you will never find again.
+ */
+var MAX_NOTE_DEPTH = 4;
+var MAX_LINKS = 20;
+
+function noteById_(user, noteId) {
+  var found = requireOwnNote_(user, noteId);
+  return clean_(toObj_(found.t, found.row, COLS.Notes), COLS.Notes);
+}
+
+function noteParentMap_(ownerId) {
+  var t = table_(TAB.NOTES);
+  var idCol = col_(t, 'note_id'), ownCol = col_(t, 'owner_id');
+  var parCol = t.idx.parent_note_id;
+  var map = {};
+  t.rows.forEach(function (r) {
+    if (str_(r[ownCol]) !== ownerId) { return; }
+    var id = str_(r[idCol]);
+    if (id) { map[id] = parCol === undefined ? '' : str_(r[parCol]); }
+  });
+  return map;
+}
+
+/** Validates a proposed parent note for `noteId`. Returns the cleaned id. */
+function checkNoteParent_(user, noteId, parentId, headId) {
+  var parent = str_(parentId);
+  if (!parent) { return ''; }
+  if (parent === str_(noteId)) { fail_('A note cannot sit under itself.', 'bad_request'); }
+
+  var p = noteById_(user, parent);
+  if (str_(p.head_id) !== str_(headId)) {
+    fail_('A note can only sit under another note in the same head.', 'bad_request');
+  }
+
+  var map = noteParentMap_(str_(user.user_id));
+  var cur = parent, steps = 0;
+  while (cur) {
+    if (cur === str_(noteId)) {
+      fail_('That would put a note inside one of its own replies.', 'bad_request');
+    }
+    cur = map[cur];
+    if (++steps > 50) { break; }
+  }
+
+  var depth = 1, walk = parent, seen = {};
+  while (walk && map[walk] && !seen[walk]) { seen[walk] = 1; walk = map[walk]; depth++; }
+  if (depth + 1 > MAX_NOTE_DEPTH) {
+    fail_('Notes can only nest ' + MAX_NOTE_DEPTH + ' levels deep.', 'bad_request');
+  }
+  return parent;
+}
+
+function linkIdsOf_(note) {
+  return str_(note.links).split(',')
+    .map(function (s) { return s.trim(); })
+    .filter(function (s) { return s; });
+}
+
+function writeLinks_(user, noteId, ids) {
+  var t = table_(TAB.NOTES);
+  var rowNum = findRow_(t, 'note_id', str_(noteId));
+  if (rowNum < 0) { return; }
+  patchRow_(t, rowNum, { links: ids.join(','), updated_at: new Date() });
+}
+
+/** Links both notes to each other, so the reference is findable from either. */
+function doLinkNotes(user, noteId, otherId) {
+  noteId = str_(noteId); otherId = str_(otherId);
+  if (!noteId || !otherId) { fail_('Two notes are needed to make a link.', 'bad_request'); }
+  if (noteId === otherId) { fail_('A note cannot link to itself.', 'bad_request'); }
+
+  var a = noteById_(user, noteId);
+  var b = noteById_(user, otherId);
+
+  return withLock_(function () {
+    var aIds = linkIdsOf_(a), bIds = linkIdsOf_(b);
+    if (aIds.indexOf(otherId) === -1) {
+      if (aIds.length >= MAX_LINKS) { fail_('A note can hold ' + MAX_LINKS + ' links.', 'bad_request'); }
+      aIds.push(otherId);
+      writeLinks_(user, noteId, aIds);
+    }
+    if (bIds.indexOf(noteId) === -1) {
+      bIds.push(noteId);
+      writeLinks_(user, otherId, bIds);
+    }
+    return { ok: true, links: aIds };
+  });
+}
+
+function doUnlinkNotes(user, noteId, otherId) {
+  noteId = str_(noteId); otherId = str_(otherId);
+  var a = noteById_(user, noteId);
+  var b = noteById_(user, otherId);
+
+  return withLock_(function () {
+    var aIds = linkIdsOf_(a).filter(function (id) { return id !== otherId; });
+    var bIds = linkIdsOf_(b).filter(function (id) { return id !== noteId; });
+    writeLinks_(user, noteId, aIds);
+    writeLinks_(user, otherId, bIds);
+    return { ok: true, links: aIds };
+  });
+}
+
+/** One note plus everything needed to show it on a page of its own. */
+function doGetNote(user, noteId) {
+  noteId = str_(noteId);
+  var nt = table_(TAB.NOTES);
+  var rowNum = findRow_(nt, 'note_id', noteId);
+  if (rowNum < 0) { fail_('That note does not exist.', 'not_found'); }
+
+  var row = nt.rows[rowNum - 2];
+  var ownerId = str_(row[col_(nt, 'owner_id')]);
+  var mine = ownerId === str_(user.user_id);
+  var headId = str_(row[col_(nt, 'head_id')]);
+
+  if (!mine &&
+      !sharedWithMe_(user, 'note', noteId) &&
+      !(headId && sharedWithMe_(user, 'head', headId))) {
+    fail_('That note does not exist.', 'not_found');
+  }
+
+  var note = clean_(toObj_(nt, row, COLS.Notes), COLS.Notes);
+  var byId = {};
+  var idCol = col_(nt, 'note_id'), archCol = nt.idx.archived;
+  nt.rows.forEach(function (r) {
+    var id = str_(r[idCol]);
+    if (!id) { return; }
+    if (archCol !== undefined && yes_(r[archCol])) { return; }
+    byId[id] = clean_(toObj_(nt, r, COLS.Notes), COLS.Notes);
+  });
+
+  var linked = linkIdsOf_(note)
+    .map(function (id) { return byId[id]; })
+    .filter(function (n) { return n && str_(n.owner_id) === ownerId; });
+
+  var kids = [];
+  Object.keys(byId).forEach(function (id) {
+    if (str_(byId[id].parent_note_id) === noteId) { kids.push(byId[id]); }
+  });
+  kids.sort(function (a, b) { return (a.created_at || '').localeCompare(b.created_at || ''); });
+
+  var head = null;
+  if (headId) {
+    var ht = table_(TAB.HEADS);
+    var hRow = findRow_(ht, 'head_id', headId);
+    if (hRow > 0) {
+      var h = clean_(toObj_(ht, ht.rows[hRow - 2], COLS.Heads), COLS.Heads);
+      head = { head_id: h.head_id, title: h.title, client: h.client };
+    }
+  }
+
+  return { ok: true, note: note, head: head, linked: linked, children: kids,
+           parent: note.parent_note_id ? (byId[note.parent_note_id] || null) : null,
+           readonly: !mine };
 }
 
 /* ========================================================================== */

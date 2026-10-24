@@ -230,9 +230,10 @@
   --line:rgba(255,92,92,.17);
   --line-strong:rgba(255,92,92,.4);
 
-  --accent:#ff3b3b;
-  --accent-dim:rgba(255,59,59,.14);
-  --accent-ink:#170406;
+  /* red means red */
+  --accent:#ff0000;
+  --accent-dim:rgba(255,0,0,.15);
+  --accent-ink:#ffffff;
 
   --green:#4ade80;--green-bg:rgba(74,222,128,.12);
   --blue:#60a5fa; --blue-bg:rgba(96,165,250,.12);
@@ -406,6 +407,55 @@
    layers its accents over its themes. Each is a single attribute on <html>.
    -------------------------------------------------------------------------- */
 
+/* --------------------------------------------------------------------------
+   1b-i. Layout per mode
+
+   A mode changes the shape of the page, not only its colour. These are the
+   levers: how wide the reading column is, how tall a row is, how much air
+   there is, and whether the head page keeps its side panel.
+   -------------------------------------------------------------------------- */
+:root{--inner-max:1180px;--row-pad:13px}
+.trow{padding-top:var(--row-pad);padding-bottom:var(--row-pad)}
+
+/* terminal and blackbox: dense, full width, nothing wasted */
+[data-mode="terminal"],[data-mode="blackbox"]{
+  --inner-max:100%;--row-pad:8px;--rail-w:224px;--pad:20px;--bar-h:54px;
+}
+[data-mode="terminal"] .trow .sub,
+[data-mode="blackbox"] .trow .sub{font-size:10.5px}
+[data-mode="terminal"] .card-body,
+[data-mode="blackbox"] .card-body{padding:13px}
+[data-mode="terminal"] .head-hero,
+[data-mode="blackbox"] .head-hero{padding:14px 16px}
+[data-mode="terminal"] .head-hero .title-in,
+[data-mode="blackbox"] .head-hero .title-in{font-size:19px}
+
+/* paper and royal: a reading measure, centred, no side rail on a head */
+[data-mode="paper"],[data-mode="royal"]{
+  --inner-max:860px;--row-pad:17px;--pad:34px;
+}
+[data-mode="paper"] .split,
+[data-mode="royal"] .split{grid-template-columns:minmax(0,1fr)}
+[data-mode="paper"] .note-page,
+[data-mode="royal"] .note-page{grid-template-columns:minmax(0,1fr)}
+[data-mode="paper"] .filters,
+[data-mode="royal"] .filters{background:transparent;box-shadow:none;padding:0 0 14px}
+[data-mode="paper"] .head-hero,
+[data-mode="royal"] .head-hero{background:transparent;box-shadow:none;padding:8px 0 18px;
+  border-bottom:1px solid var(--line);border-radius:0}
+
+/* runic: narrow and formal, taller rows */
+[data-mode="runic"]{--inner-max:1000px;--row-pad:16px;--pad:30px}
+
+/* sleek: wide and airy, the opposite of terminal */
+[data-mode="sleek"]{--inner-max:1320px;--row-pad:18px;--pad:38px;--rail-w:268px;--bar-h:70px}
+[data-mode="sleek"] .card-body{padding:24px}
+[data-mode="sleek"] .head-hero{padding:30px 32px}
+[data-mode="sleek"] .thead{padding-top:14px;padding-bottom:14px}
+
+/* ember and nocturne: the default shape, a touch taller */
+[data-mode="ember"],[data-mode="nocturne"]{--row-pad:15px;--inner-max:1240px}
+
 /* accent ------------------------------------------------------------------- */
 [data-accent="emerald"]{--accent:#3ddc84;--accent-dim:rgba(61,220,132,.13);--accent-ink:#04120a}
 [data-theme="light"][data-accent="emerald"]{--accent:#0f8a4d;--accent-dim:rgba(15,138,77,.10);--accent-ink:#fff}
@@ -417,6 +467,9 @@
 [data-theme="light"][data-accent="magenta"]{--accent:#b0189a;--accent-dim:rgba(176,24,154,.10);--accent-ink:#fff}
 [data-accent="crimson"]{--accent:#ff5c69;--accent-dim:rgba(255,92,105,.14);--accent-ink:#1d0407}
 [data-theme="light"][data-accent="crimson"]{--accent:#c22736;--accent-dim:rgba(194,39,54,.10);--accent-ink:#fff}
+/* pure red, exactly #ff0000, in both themes — no softening */
+[data-accent="red"]{--accent:#ff0000;--accent-dim:rgba(255,0,0,.15);--accent-ink:#ffffff}
+[data-theme="light"][data-accent="red"]{--accent:#ff0000;--accent-dim:rgba(255,0,0,.1);--accent-ink:#ffffff}
 
 /* font --------------------------------------------------------------------- */
 [data-font="mono"]{--font-body:"IBM Plex Mono",ui-monospace,Consolas,monospace}
@@ -863,7 +916,7 @@ a:hover{text-decoration:underline}
 
 /* work surface -------------------------------------------------------------- */
 .surface{flex:1;overflow-y:auto;min-height:0;padding:var(--pad) var(--pad) 72px}
-.inner{max-width:1180px;margin:0 auto}
+.inner{max-width:var(--inner-max,1180px);margin:0 auto}
 .view{display:none}
 .view.on{display:block}
 
@@ -1007,6 +1060,75 @@ a:hover{text-decoration:underline}
 .inbox-item .when{margin-top:6px;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .inbox-item .mover{display:flex;gap:8px;align-items:center;flex:0 0 auto;width:300px}
 @media (max-width:860px){.inbox-item{flex-direction:column;gap:12px}.inbox-item .mover{width:100%}}
+
+/* --------------------------------------------------------------------------
+   The note page
+
+   A note is often longer than the timeline can show. Opening one gives it a
+   page: the line at the top, the write-up in a box that grows with the window,
+   and everything about it down the side.
+   -------------------------------------------------------------------------- */
+.note-page{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:1040px){.note-page{grid-template-columns:minmax(0,1fr)}}
+.np-main{min-width:0}
+
+.np-line{
+  width:100%;resize:vertical;min-height:58px;line-height:1.5;
+  font-family:var(--font-disp);font-size:20px;font-weight:600;color:var(--ink-strong);
+  background:transparent;border:1px solid transparent;border-radius:var(--radius-sm);
+  padding:8px 10px;margin:-8px -10px;
+}
+.np-line:hover{background:var(--panel-2)}
+.np-line:focus{outline:none;background:var(--panel-2);border-color:var(--accent)}
+
+.np-details{
+  width:100%;resize:vertical;
+  min-height:min(58vh,560px);
+  line-height:1.8;font-size:14.5px;
+  background:var(--panel-2);border:1px solid var(--line);
+  border-radius:var(--radius-sm);padding:18px 20px;color:var(--ink);
+  tab-size:2;
+}
+.np-details:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+[data-mode="paper"] .np-details{font-size:16px;line-height:1.85}
+
+/* Wide: the write-up takes the whole surface, side panel out of the way */
+body.np-wide .note-page{grid-template-columns:minmax(0,1fr)}
+body.np-wide .np-side{display:none}
+body.np-wide .np-details{min-height:min(72vh,780px)}
+
+.linkrow{
+  width:100%;display:block;text-align:left;padding:11px 18px;
+  border-bottom:1px solid var(--line);transition:background .12s;
+}
+.linkrow:last-child{border-bottom:none}
+.linkrow:hover{background:var(--panel-2)}
+.linkrow .t{color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
+.linkrow .m{margin-top:4px;font-size:10.5px;color:var(--ink-faint)}
+.linkrow .cut{float:right;color:var(--ink-faint);font-size:12px;margin-left:8px}
+.linkrow .cut:hover{color:var(--red)}
+.emptyline{padding:14px 18px;font-size:11.5px;color:var(--ink-faint)}
+
+/* --------------------------------------------------------------------------
+   Dragging a note onto another files it underneath
+   -------------------------------------------------------------------------- */
+.note[draggable="true"] .note-top{cursor:grab}
+.note.dragging{opacity:.45}
+.note.drop-into > .note-top{
+  outline:2px dashed var(--accent);outline-offset:4px;border-radius:var(--radius-xs);
+}
+.note-kid{margin-left:22px;border-left:1px solid var(--line);padding-left:16px}
+.note-kid::before{left:-1px}
+.unnest{
+  margin:6px 0 2px 22px;font-size:10.5px;color:var(--ink-faint);
+  border:1px dashed var(--line);border-radius:var(--radius-xs);padding:4px 9px;
+  display:inline-block;
+}
+.unnest.over{border-color:var(--accent);color:var(--accent)}
+.note .opener{
+  font-size:10.5px;color:var(--ink-faint);margin-top:6px;display:inline-block;
+}
+.note .opener:hover{color:var(--accent);text-decoration:underline}
 
 /* images --------------------------------------------------------------------
    Two sizes on purpose. While you are composing, pictures are small chips you
