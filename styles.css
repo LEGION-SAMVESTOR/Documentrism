@@ -438,8 +438,20 @@
 [data-mode="royal"] .split{grid-template-columns:minmax(0,1fr)}
 [data-mode="paper"] .note-page,
 [data-mode="royal"] .note-page{grid-template-columns:minmax(0,1fr)}
+/* No panel, but still a block: a rule under it stops the controls floating
+   loose against the page, and the toggles sit with the fields rather than
+   being flung to the far edge. */
 [data-mode="paper"] .filters,
-[data-mode="royal"] .filters{background:transparent;box-shadow:none;padding:0 0 14px}
+[data-mode="royal"] .filters{
+  background:transparent;box-shadow:none;
+  padding:0 0 16px;margin-bottom:20px;
+  border-bottom:1px solid var(--line);
+  gap:16px 20px;
+}
+[data-mode="paper"] .filters .spacer,
+[data-mode="royal"] .filters .spacer{display:none}
+[data-mode="paper"] .filters .field,
+[data-mode="royal"] .filters .field{width:150px}
 [data-mode="paper"] .head-hero,
 [data-mode="royal"] .head-hero{background:transparent;box-shadow:none;padding:8px 0 18px;
   border-bottom:1px solid var(--line);border-radius:0}
@@ -464,28 +476,45 @@
    row is a card or a line of a table, how loud a heading is.
    -------------------------------------------------------------------------- */
 
-/* --- paper and royal: navigation moves to the top ------------------------ */
+/* --- paper and royal: navigation moves to the top ------------------------
+   Both bars line their contents up with the reading column, so the header
+   reads as part of the page instead of floating across the whole window. The
+   action buttons drop to their icons — they have to share one row with the
+   navigation, and spelling them out pushed Sign out off the screen. */
 @media (min-width:901px){
+  [data-mode="paper"],[data-mode="royal"]{
+    --edge:max(var(--pad), calc((100vw - var(--inner-max)) / 2));
+  }
   [data-mode="paper"] .shell,
   [data-mode="royal"] .shell{
     grid-template-columns:1fr;grid-template-rows:auto 1fr;
   }
   [data-mode="paper"] .rail,
   [data-mode="royal"] .rail{
-    flex-direction:row;align-items:center;gap:20px;
-    border-right:none;border-bottom:1px solid var(--line);
-    padding:0 var(--pad);height:66px;background:transparent;
+    flex-direction:row;align-items:center;gap:18px;
+    border-right:none;border-bottom:none;
+    padding:0 var(--edge);height:60px;background:transparent;
   }
   [data-mode="paper"] .rail-head,
   [data-mode="royal"] .rail-head{border:none;padding:0;flex:0 0 auto}
   [data-mode="paper"] .rail-head .who,
   [data-mode="royal"] .rail-head .who{display:none}
+  [data-mode="paper"] .rail-head .wordmark,
+  [data-mode="royal"] .rail-head .wordmark{font-size:15px;letter-spacing:.1em}
   [data-mode="paper"] .rail-body,
   [data-mode="royal"] .rail-body{
-    flex:1;display:flex;align-items:center;gap:6px;overflow:visible;padding:0;
+    flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:0;
+    /* it fits at 901px, but a longer name or a stray zoom level should
+       scroll the bar rather than push Sign out off the screen again */
+    overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
   }
+  [data-mode="paper"] .rail-body::-webkit-scrollbar,
+  [data-mode="royal"] .rail-body::-webkit-scrollbar{height:0}
   [data-mode="paper"] .rail-group,
   [data-mode="royal"] .rail-group{margin:0;display:flex;align-items:center;gap:6px}
+  /* navigation first, the quick-note button pushed to the end of the row */
+  [data-mode="paper"] .rail-group:first-child,
+  [data-mode="royal"] .rail-group:first-child{order:2;margin-left:auto}
   [data-mode="paper"] .rail-group > .eyebrow,
   [data-mode="royal"] .rail-group > .eyebrow,
   [data-mode="paper"] .statline,
@@ -494,17 +523,43 @@
   [data-mode="royal"] .nav-item{width:auto;padding:7px 13px}
   [data-mode="paper"] .rail-foot,
   [data-mode="royal"] .rail-foot{
-    border:none;padding:0;flex-direction:row;gap:7px;flex:0 0 auto;
+    border:none;padding:0;flex-direction:row;gap:6px;flex:0 0 auto;
   }
   [data-mode="paper"] .rail-foot .row,
-  [data-mode="royal"] .rail-foot .row{gap:7px}
+  [data-mode="royal"] .rail-foot .row{gap:6px;flex:0 0 auto}
+  [data-mode="paper"] .rail-foot .btn span,
+  [data-mode="royal"] .rail-foot .btn span{display:none}
+  [data-mode="paper"] .rail-foot .btn,
+  [data-mode="royal"] .rail-foot .btn{padding:7px 11px;font-size:13px}
   [data-mode="paper"] #qaOpen,
   [data-mode="royal"] #qaOpen{width:auto;padding:8px 16px}
+  [data-mode="paper"] #qaOpen span,
+  [data-mode="royal"] #qaOpen span{display:inline}
+
+  /* one header band, not two: the command bar carries the only rule */
+  [data-mode="paper"] .cmdbar,
+  [data-mode="royal"] .cmdbar{
+    height:56px;flex-basis:56px;padding:0 var(--edge);
+    background:transparent;backdrop-filter:none;
+    border-bottom:1px solid var(--line);
+  }
+  [data-mode="paper"] .search,
+  [data-mode="royal"] .search{max-width:360px}
+
   /* the collapse control has nothing to collapse when the bar is horizontal */
   [data-mode="paper"] #railCollapse,
   [data-mode="royal"] #railCollapse{display:none}
   body.rail-min [data-mode="paper"] .shell{grid-template-columns:1fr}
 }
+
+/* Narrow rails cannot carry spelled-out buttons either — the icons alone do
+   the job, and the title attribute still names them. */
+[data-mode="terminal"] .rail-foot .btn span,
+[data-mode="blackbox"] .rail-foot .btn span,
+[data-mode="runic"] .rail-foot .btn span,
+[data-mode="ember"] .rail-foot .btn span,
+[data-mode="nocturne"] .rail-foot .btn span{font-size:9.5px}
+.rail-foot .btn{min-width:0;overflow:hidden;white-space:nowrap}
 
 /* --- paper and royal: a document, not a dashboard ------------------------ */
 [data-mode="paper"] .panel,
@@ -526,6 +581,25 @@
 [data-mode="royal"] .card-body{padding:16px 0}
 [data-mode="paper"] .card-head,
 [data-mode="royal"] .card-head{padding:0 0 10px}
+
+/* With the panel gone, its inner padding only pushed every row 18px to the
+   right of the heading above it. Everything lines up on one edge instead. */
+[data-mode="paper"] .thead,[data-mode="royal"] .thead,
+[data-mode="paper"] .trow,[data-mode="royal"] .trow,
+[data-mode="paper"] .panel-head,[data-mode="royal"] .panel-head,
+[data-mode="paper"] .timeline,[data-mode="royal"] .timeline,
+[data-mode="paper"] .composer,[data-mode="royal"] .composer,
+[data-mode="paper"] .inbox-item,[data-mode="royal"] .inbox-item,
+[data-mode="paper"] .person,[data-mode="royal"] .person,
+[data-mode="paper"] .shared-note,[data-mode="royal"] .shared-note,
+[data-mode="paper"] .hit,[data-mode="royal"] .hit,
+[data-mode="paper"] .linkrow,[data-mode="royal"] .linkrow,
+[data-mode="paper"] .empty,[data-mode="royal"] .empty{
+  padding-left:0;padding-right:0;
+}
+[data-mode="paper"] .composer,[data-mode="royal"] .composer{
+  background:transparent;border-bottom:1px solid var(--line);padding-bottom:16px;
+}
 
 /* --- terminal and blackbox: a table, not a stack of cards ---------------- */
 [data-mode="terminal"] .panel,
