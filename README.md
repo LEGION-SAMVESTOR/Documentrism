@@ -153,6 +153,38 @@ names only, no birthdays, no hashes.
 Shared content is never written to the local cache, which is keyed per account
 and meant for your own work.
 
+## Search
+
+Two halves, deliberately split by where the data is.
+
+- **Heads** filter instantly in the browser, from the list already in memory —
+  title, client, type and status.
+- **Note text** is never all in the browser, so it costs a round trip.
+  `searchNotes` scans the caller's own live notes across text, details and the
+  parent head's title, and runs 400ms after you stop typing rather than per
+  keystroke. Results appear under the heads, with the matched words marked.
+
+Every word in the query must appear somewhere, in any order, so "cart drawer"
+finds "the drawer on the cart page". Capped at 60 results, and the header says
+when there were more.
+
+Answers are sequence-numbered: a slow reply for an older query is dropped
+rather than overwriting what you are looking at now.
+
+## Knowing what is deployed
+
+`ping` (and a plain GET of the `/exec` URL) returns the version and a
+capability list:
+
+```json
+{"ok":true,"app":"documentrism","version":"2.3.0",
+ "can":["accounts","sharing","images","validation","search"]}
+```
+
+Open the backend URL in a browser to see which build is live. Before this, two
+very different backends both reported `2.0.0`, and there was no way to tell
+from outside which one you were talking to.
+
 ## Validation
 
 Checked in `app.js` and again in `apps-script.gs`, because the browser copy is
@@ -254,8 +286,7 @@ owner. Sharing work is what each person's **Export** is for.
 
 ## Not built
 
-- Search covers head titles, clients, types and statuses — not note text, which
-  would need a server-side query since notes are not all loaded in the browser.
+- Search of **shared** notes: you only ever search your own.
 - No "needs detail" screen or timeline view; the flag is set and counted.
 - Clients, types and statuses in `Lists` are shared by everyone. Notes and heads
   are not.

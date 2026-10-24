@@ -173,6 +173,7 @@ later. Only the text is ever required.
 | `Ctrl + J` | New head |
 | `Ctrl + ,` | Appearance |
 | `/` | Jump to search |
+| | Search covers head titles **and note text** |
 | `Enter` | Save the note you are typing |
 | `Shift + Enter` | New line inside a note |
 | `Esc` | Close the box |
@@ -366,6 +367,18 @@ missing without touching data that is already there.
 **The Documentrism menu is not in the sheet**
 Refresh the sheet page. If it still does not show, run `onOpen` once from the
 script editor.
+
+**Which version of the backend is live?**
+Open the `/exec` URL in a browser. It answers with the version and what it can
+do, for example:
+
+```
+{"ok":true,"app":"documentrism","version":"2.3.0",
+ "can":["accounts","sharing","images","validation","search"]}
+```
+
+If something in the app says "Unknown action", the backend is older than the
+website and needs re-pasting and redeploying.
 
 **I changed the script and nothing changed**
 Apps Script serves the deployed version, not the saved one.

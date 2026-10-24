@@ -473,6 +473,94 @@ function statusChip(status) {
   return `<span class="chip ${cls}"><span class="dot"></span>${esc(status)}</span>`;
 }
 
+/* --------------------------------------------------------------------------
+   Note search
+
+   Heads filter instantly from what is already in memory. Note text is not in
+   memory and never will be, so it costs a round trip — which runs behind the
+   instant half rather than holding it up.
+   -------------------------------------------------------------------------- */
+let searchTimer = null;
+let searchSeq = 0;
+
+function onSearchInput(value) {
+  S.filters.q = value;
+  renderHeads();                       // instant, from memory
+
+  clearTimeout(searchTimer);
+  const q = value.trim();
+  if (q.length < 2) { hideNoteHits(); return; }
+
+  $("#nfRows").innerHTML = `<div class="searching">Looking through your notes…</div>`;
+  $("#nfTerm").textContent = `"${q}"`;
+  $("#nfCount").textContent = "";
+  $("#notesFound").classList.remove("hide");
+
+  searchTimer = setTimeout(() => findNotes(q), 400);
+}
+
+function hideNoteHits() {
+  clearTimeout(searchTimer);
+  searchSeq++;                         // abandon any answer still in flight
+  $("#notesFound").classList.add("hide");
+  $("#nfRows").innerHTML = "";
+}
+
+async function findNotes(q) {
+  const mine = ++searchSeq;
+  try {
+    const res = await API.call("searchNotes", { q });
+    if (mine !== searchSeq) return;    // a newer search has replaced this one
+    if (S.filters.q.trim() !== q) return;
+    renderNoteHits(res);
+  } catch (e) {
+    if (mine !== searchSeq) return;
+    $("#nfRows").innerHTML = `<div class="searching">Could not search: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderNoteHits(res) {
+  const rows = res.notes || [];
+  $("#nfCount").textContent = res.truncated
+    ? `first ${rows.length} of ${res.total}`
+    : `${rows.length} found`;
+
+  if (!rows.length) {
+    $("#nfRows").innerHTML = `<div class="searching">No note mentions that.</div>`;
+    return;
+  }
+
+  const words = String(res.q || "").split(/\s+/).filter(Boolean);
+  $("#nfRows").innerHTML = rows.map(n => `
+    <button class="hit" data-hit-head="${esc(n.head_id)}" data-hit-note="${esc(n.note_id)}">
+      <div class="txt">${highlight(n.text, words)}</div>
+      <div class="where">
+        <span>${n.head_title ? esc(n.head_title) : "Inbox"}</span>
+        <span>·</span>
+        <span>${esc(fullOf(n.created_at))}</span>
+        ${n.details ? `<span>· has details</span>` : ""}
+        ${imageIdsOf(n).length ? `<span>· ${imageIdsOf(n).length} image</span>` : ""}
+      </div>
+    </button>`).join("");
+
+  $$("#nfRows .hit").forEach(el => on(el, "click", () => {
+    const head = el.dataset.hitHead;
+    if (head) { openHead(head); }
+    else { show("inbox"); }
+  }));
+}
+
+/** Highlights the searched words. Escapes first, so this cannot inject. */
+function highlight(text, words) {
+  let out = esc(text);
+  words.forEach(w => {
+    if (!w) return;
+    const safe = esc(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(${safe})`, "gi"), "<mark>$1</mark>");
+  });
+  return out;
+}
+
 function emptyState(mark, title, body, action) {
   return `<div class="empty"><div class="mark">${mark}</div><h3>${esc(title)}</h3>
           <p>${esc(body)}</p>${action || ""}</div>`;
@@ -545,6 +633,7 @@ async function openHead(headId, opts) {
 
   try {
     const res = await API.call("getHead", { head_id: headId });
+    if (!res || !res.head) { throw new Error("The sheet sent back an empty head."); }
     // Don't let a slow answer overwrite a head the user has since moved on from
     if (S.current && S.current.head.head_id !== headId && opts.quiet) return;
     S.current = { head: res.head, notes: res.notes };
@@ -1692,7 +1781,7 @@ function wire() {
   $$("[data-nav]").forEach(b => on(b, "click", () => show(b.dataset.nav)));
   on($("#railToggle"), "click", () => document.body.classList.toggle("rail-open"));
 
-  on($("#search"), "input", e => { S.filters.q = e.target.value; renderHeads(); });
+  on($("#search"), "input", e => onSearchInput(e.target.value));
   on($("#fClient"), "change", e => { S.filters.client = e.target.value; renderHeads(); });
   on($("#fType"), "change", e => { S.filters.type = e.target.value; renderHeads(); });
   on($("#fStatus"), "change", e => { S.filters.status = e.target.value; renderHeads(); });

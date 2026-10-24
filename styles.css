@@ -839,6 +839,24 @@ body.readonly .shot .kill{display:none !important}
   position:absolute;top:16px;right:20px;color:#fff;font-size:22px;opacity:.8;
 }
 
+/* note search results -------------------------------------------------------- */
+.hit{
+  width:100%;display:block;text-align:left;padding:13px 18px;
+  border-bottom:1px solid var(--line);transition:background .12s;
+}
+.hit:last-child{border-bottom:none}
+.hit:hover{background:var(--panel-2)}
+.hit .txt{color:var(--ink);line-height:1.55;overflow-wrap:anywhere}
+.hit .where{
+  margin-top:5px;font-size:10.5px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums;display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+}
+.hit mark{
+  background:var(--accent-dim);color:var(--accent);
+  padding:0 2px;border-radius:3px;font-weight:600;
+}
+.searching{padding:14px 18px;font-size:11.5px;color:var(--ink-faint)}
+
 /* shared -------------------------------------------------------------------- */
 .person{
   width:100%;display:flex;align-items:center;gap:14px;text-align:left;

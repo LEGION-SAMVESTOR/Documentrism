@@ -187,7 +187,7 @@
       <button class="btn sm ghost rail-toggle" id="railToggle">☰</button>
       <div class="search">
         <span class="ic">⌕</span>
-        <input class="inp" id="search" type="search" placeholder="Search your heads" autocomplete="off">
+        <input class="inp" id="search" type="search" placeholder="Search heads and notes" autocomplete="off">
         <kbd>/</kbd>
       </div>
       <div class="spacer"></div>
@@ -245,6 +245,16 @@
               <div>Status</div><div class="r c-notes">Notes</div><div class="r c-when">Last activity</div>
             </div>
             <div id="headsRows"><div class="skeleton"><i></i><i></i><i></i></div></div>
+          </div>
+
+          <div class="panel hide" id="notesFound" style="margin-top:18px">
+            <div class="panel-head">
+              <span class="eyebrow">Notes matching</span>
+              <span class="eyebrow" id="nfTerm">—</span>
+              <div class="spacer"></div>
+              <span class="eyebrow faint" id="nfCount"></span>
+            </div>
+            <div id="nfRows"></div>
           </div>
         </section>
 

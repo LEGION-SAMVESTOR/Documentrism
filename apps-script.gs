@@ -22,7 +22,15 @@
  */
 
 var APP = 'documentrism';
-var VERSION = '2.0.0';
+var VERSION = '2.3.0';
+
+/**
+ * What this deployment can do. ping returns it without a session, so you can
+ * paste the /exec URL in a browser and see at a glance which version is live —
+ * which is otherwise impossible to tell from the outside, and the one question
+ * that comes up every time the front end moves ahead of the backend.
+ */
+var CAPABILITIES = ['accounts', 'sharing', 'images', 'validation', 'search'];
 
 var TAB = {
   USERS: 'Users',
@@ -87,7 +95,8 @@ function doPost(e) {
 
 /** A browser hitting the URL directly gets a health check, never data. */
 function doGet() {
-  return json({ ok: true, app: APP, version: VERSION, note: 'POST to this URL.' });
+  return json({ ok: true, app: APP, version: VERSION, can: CAPABILITIES,
+                note: 'POST to this URL.' });
 }
 
 function json(obj) {
@@ -168,7 +177,7 @@ function dispatch_(action, body, user) {
   {
     switch (action) {
       /* --- open --- */
-      case 'ping':          return { ok: true, app: APP, version: VERSION };
+      case 'ping':          return { ok: true, app: APP, version: VERSION, can: CAPABILITIES };
       case 'signup':        return doSignup(body);
       case 'login':         return doLogin(body);
       case 'resetPassword': return doResetPassword(body);
@@ -180,6 +189,7 @@ function dispatch_(action, body, user) {
       /* --- data --- */
       case 'bootstrap':     return doBootstrap(user);
       case 'getHeads':      return { ok: true, heads: ownedHeads_(user, !!body.include_archived) };
+      case 'searchNotes':   return doSearchNotes(user, body.q);
       case 'getHead':       return doGetHead(user, body.head_id);
       case 'createHead':    return doCreateHead(user, body.data);
       case 'updateHead':    return doUpdateHead(user, body.head_id, body.patch);
@@ -1105,6 +1115,58 @@ function doExportAll(user) {
       notes: notes
     }
   };
+}
+
+/* ========================================================================== */
+/* Search                                                                     */
+/* ========================================================================== */
+
+var SEARCH_LIMIT = 60;
+
+/**
+ * Looks through the caller's own note text and details. The front end already
+ * filters heads instantly from what it has in memory; this is the half it
+ * cannot do, because notes are never all loaded in the browser.
+ *
+ * Every word in the query must appear somewhere in the note — so "cart drawer"
+ * finds a note saying "the drawer on the cart page", which a plain substring
+ * match would miss.
+ */
+function doSearchNotes(user, q) {
+  var query = str_(q).toLowerCase();
+  if (query.length < 2) { return { ok: true, q: query, notes: [], truncated: false }; }
+
+  var words = query.split(/\s+/).filter(function (w) { return w; });
+  var ownerId = str_(user.user_id);
+
+  var ht = table_(TAB.HEADS);
+  var titles = {};
+  var hId = col_(ht, 'head_id'), hTitle = col_(ht, 'title'), hOwner = col_(ht, 'owner_id');
+  ht.rows.forEach(function (r) {
+    if (str_(r[hOwner]) === ownerId) { titles[str_(r[hId])] = str_(r[hTitle]); }
+  });
+
+  var nt = table_(TAB.NOTES);
+  var nId = col_(nt, 'note_id'), nOwner = col_(nt, 'owner_id'), nArch = nt.idx.archived;
+  var hits = [];
+
+  nt.rows.forEach(function (r) {
+    if (!str_(r[nId]) || str_(r[nOwner]) !== ownerId) { return; }
+    if (nArch !== undefined && yes_(r[nArch])) { return; }
+
+    var o = clean_(toObj_(nt, r, COLS.Notes), COLS.Notes);
+    var hay = (o.text + ' ' + o.details + ' ' + (titles[o.head_id] || '')).toLowerCase();
+    for (var i = 0; i < words.length; i++) {
+      if (hay.indexOf(words[i]) === -1) { return; }
+    }
+    o.head_title = titles[o.head_id] || '';
+    hits.push(o);
+  });
+
+  hits.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+  var truncated = hits.length > SEARCH_LIMIT;
+  return { ok: true, q: query, notes: hits.slice(0, SEARCH_LIMIT), truncated: truncated,
+           total: hits.length };
 }
 
 /* ========================================================================== */
