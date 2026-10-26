@@ -89,7 +89,11 @@ function saveCache() {
   const key = cacheKey();
   if (!key) return;
   local(key, {
-    heads: S.heads, inbox: S.inbox, lists: S.lists,
+    // A head still on its way to the sheet is left out: it has no real id, so
+    // a cached copy of it would reappear on every load as a row that opens
+    // nothing. The write itself is kept safe by the outbox in api.js.
+    heads: S.heads.filter(h => !h._pending),
+    inbox: S.inbox, lists: S.lists,
     needsDetail: S.needsDetail, at: Date.now()
   });
 }
@@ -382,12 +386,33 @@ function wireGate() {
 /* ==========================================================================
    Entering and leaving the app
    ========================================================================== */
+
+/** Runs fn once the write queue is empty — the restored writes are not in
+ *  this page's state, so the screen only matches the sheet after a refresh. */
+function whenQueueDrains(fn) {
+  let done = false;
+  API.onChange(() => {
+    if (done || API.pending() || API.state.stuck) return;
+    done = true;
+    fn();
+  });
+}
+
 async function enterApp(res) {
   if (res && res.user) S.user = res.user;
   if (res && res.prefs) S.prefs = Object.assign(S.prefs, res.prefs);
   applySkin();
   $("#gate").classList.add("hide");
   $("#shell").classList.remove("hide");
+
+  // Anything that did not reach the sheet last time goes out now. Each job
+  // still carries the op_id it was given then, so a write that did land while
+  // the tab was closing is recognised and not repeated.
+  const resumed = API.restoreOutbox();
+  if (resumed) {
+    toast(`Finishing ${resumed} change${resumed === 1 ? "" : "s"} from last time…`, "");
+    whenQueueDrains(() => reload({ background: true }));
+  }
 
   // If this account has been used on this device before, the screen is up
   // before the network is even asked.
@@ -455,6 +480,7 @@ function refreshHeadPickers() {
   });
   let html = `<option value="">Inbox — file it later</option>`;
   ordered.forEach(h => {
+    if (h._pending) return;        // no real id yet; a note cannot be filed to it
     html += `<option value="${esc(h.head_id)}">${esc(h.title)}${h.client ? "  ·  " + esc(h.client) : ""}</option>`;
   });
   $("#qaHead").innerHTML = html;
@@ -682,16 +708,17 @@ function renderBoard(box, rows) {
         : `<div class="emptyline">Nothing here.</div>`}
     </div>`).join("");
 
-  $$("#headsRows .trow").forEach(el => on(el, "click", () => openHead(el.dataset.head)));
+  $$("#headsRows .trow").forEach(el => on(el, "click", () => openHeadRow(el.dataset.head)));
 }
 
 /** The markup for one head row, shared by the table and the board. */
 function headRowHtml(h, kids) {
   return `
-    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}" data-head="${esc(h.head_id)}">
+    <button class="trow${h.archived === "Yes" ? " is-arch" : ""}${h._pending ? " is-pending" : ""}" data-head="${esc(h.head_id)}">
       <div>
-        <div class="title">${esc(h.title)}${kids ? `<span class="kids">${kids} sub</span>` : ""}</div>
-        <div class="sub">${h.link ? "↗ link · " : ""}created ${esc(dateOf(h.created_at))}${
+        <div class="title">${esc(h.title)}${kids ? `<span class="kids">${kids} sub</span>` : ""}${
+          h._pending ? `<span class="kids saving">saving</span>` : ""}</div>
+        <div class="sub">${h._pending ? "writing to the sheet · " : ""}${h.link ? "↗ link · " : ""}created ${esc(dateOf(h.created_at))}${
           h.needs_detail === "Yes" ? " · needs detail" : ""}${
           h.archived === "Yes" ? " · archived" : ""}</div>
       </div>
@@ -706,6 +733,13 @@ function headRowHtml(h, kids) {
 function emptyState(mark, title, body, action) {
   return `<div class="empty"><div class="mark">${mark}</div><h3>${esc(title)}</h3>
           <p>${esc(body)}</p>${action || ""}</div>`;
+}
+
+/** A row click. A head that is still being written has no id to fetch yet. */
+function openHeadRow(headId) {
+  const h = headRow(headId);
+  if (h && h._pending) { toast("That head is still being saved — one moment.", ""); return; }
+  openHead(headId);
 }
 
 /** How many live sub-heads a head has, for the badge on its row. */
@@ -742,7 +776,7 @@ function renderHeads() {
 
   box.innerHTML = rows.map(h => headRowHtml(h, kidCount(h.head_id))).join("");
 
-  $$("#headsRows .trow").forEach(el => on(el, "click", () => openHead(el.dataset.head)));
+  $$("#headsRows .trow").forEach(el => on(el, "click", () => openHeadRow(el.dataset.head)));
 }
 
 /* ==========================================================================
@@ -2097,25 +2131,61 @@ async function createHeadFromDialog() {
     parent_id: $("#nhParent").value
   };
   closeDialog("#nhScrim");
+  ["#nhTitle", "#nhClient", "#nhLink"].forEach(s => { $(s).value = ""; });
+
+  // The head appears in the list straight away and is saved behind you. The
+  // sheet takes a second or two and there is nothing to wait for.
+  const now = new Date().toISOString();
+  const temp = Object.assign({
+    head_id: "tmp-" + Date.now(),
+    created_at: now, updated_at: now,
+    needs_detail: "No", details: "", archived: "No", note_count: 0,
+    parent_id: data.parent_id || ""
+  }, data);
+  temp._pending = true;
+
+  S.heads.unshift(temp);
+  if (temp.client && !S.lists.clients.includes(temp.client)) {
+    S.lists.clients.push(temp.client);
+    S.lists.clients.sort();
+    refreshLists();
+  }
+  refreshHeadPickers(); renderHeads(); paintStats();
   sync("saving", "Creating head");
 
   try {
     const res = await API.call("createHead", { data });
     const head = res.head;
-    S.heads.unshift(head);
-    if (head.client && !S.lists.clients.includes(head.client)) {
-      S.lists.clients.push(head.client);
-      S.lists.clients.sort();
-      refreshLists();
-    }
-    refreshHeadPickers(); renderHeads(); paintStats();
+    const i = S.heads.indexOf(temp);
+    if (i > -1) S.heads[i] = head; else S.heads.unshift(head);
+    refreshHeadPickers(); renderHeads(); paintStats(); saveCache();
     sync("saved", "Saved");
-    ["#nhTitle", "#nhClient", "#nhLink"].forEach(s => { $(s).value = ""; });
-    openHead(head.head_id);
+    // No jump. The row has been on screen since the click, and throwing the
+    // user onto another page seconds later would be the opposite of fast.
+    toast(`“${head.title}” created.`, "good", { label: "Open", run: () => openHead(head.head_id) });
+
+    // A sub-head made from its parent's page belongs in that page's list of
+    // children, which only the server knows about.
+    if (head.parent_id && S.view === "head" && S.current &&
+        S.current.head.head_id === head.parent_id) {
+      openHead(head.parent_id, { quiet: true });
+    }
     return head;
   } catch (e) {
-    sync("failed", e.message);
-    toast(e.message, "bad");
+    S.heads = S.heads.filter(h => h !== temp);   // it never existed
+    renderHeads(); paintStats();
+    // This write is not in the queue, so the Retry on the status pill would be
+    // a dead button. Hand the typing back instead: the dialog reopens exactly
+    // as it was left, with the reason on it.
+    sync("idle", "Not saved");
+    $("#nhTitle").value = data.title;
+    $("#nhClient").value = data.client;
+    $("#nhType").value = data.type;
+    $("#nhStatus").value = data.status;
+    $("#nhLink").value = data.link;
+    $("#nhParent").value = data.parent_id;
+    openDialog("#nhScrim", "#nhTitle");
+    showErr("#nhErr", e.message);
     return null;
   }
 }
@@ -2378,6 +2448,9 @@ const ROUTE = {
     if (r.view === "head" && r.id) { openHead(r.id, { fromUrl: true }); return; }
     if (r.view === "note" && r.id) { openNote(r.id, { fromUrl: true }); return; }
     show(r.view, { fromUrl: true });
+    // An address nobody can act on — an old link, or a typo. The list is the
+    // right place to land, but the bar should not keep claiming otherwise.
+    if (r.unknown) { ROUTE.set("heads", "", "", true); }
   }
 };
 

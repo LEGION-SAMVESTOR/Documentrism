@@ -1223,6 +1223,17 @@ a:hover{text-decoration:underline}
 }
 [data-mode="toon"] .trow .kids,[data-style="brutal"] .trow .kids{border-width:2px}
 
+/* A head that is on screen but not yet in the sheet. It is dimmed rather than
+   hidden, so the work is visible while the write is still in the air. */
+.trow.is-pending{cursor:default}
+.trow.is-pending > div{opacity:.62}
+.trow .kids.saving{
+  color:var(--accent);border-color:var(--accent);
+  animation:pendingPulse 1.1s ease-in-out infinite;
+}
+@keyframes pendingPulse{0%,100%{opacity:.45}50%{opacity:1}}
+[data-anim="off"] .trow .kids.saving{animation:none}
+
 .crumb .up{color:var(--ink-soft)}
 .crumb .up:hover{color:var(--accent)}
 

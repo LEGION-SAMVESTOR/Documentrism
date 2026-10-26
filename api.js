@@ -134,6 +134,7 @@ const API = (function () {
   }
   function signOut(silent) {
     const had = !!token();
+    clearOutbox();
     queue.length = 0;
     state.queued = 0; state.stuck = false;
     setToken(null); setUser(null);
@@ -141,9 +142,50 @@ const API = (function () {
     listeners.forEach(fn => { try { fn(state, "signout"); } catch (e) {} });
   }
 
-  /* ---------- write queue ---------- */
+  /* ---------- write queue ----------
+     The queue is kept on the device as well as in memory, so closing the tab
+     or reloading mid-save does not lose the work. Each entry already carries
+     an op_id, which is what makes replaying it safe: the server runs a given
+     op_id once and returns the stored result for any repeat.
+
+     localStorage rather than cookies: a cookie is capped near 4KB and is sent
+     to Vercel on every request, which has no idea what a note is. */
+  const K_OUT = "documentrism.outbox";
   const queue = [];
   let busy = false;
+
+  function outboxKey() {
+    const u = user();
+    return u && u.user_id ? `${K_OUT}.${u.user_id}` : null;
+  }
+
+  function saveOutbox() {
+    const key = outboxKey();
+    if (!key) return;
+    try {
+      // Only what can be replayed: callbacks belong to a page that is gone.
+      write(key, queue.map(j => ({ action: j.action, payload: j.payload })));
+    } catch (e) {}
+  }
+
+  /** Puts anything left from last time back in the queue, oldest first. */
+  function restoreOutbox() {
+    const key = outboxKey();
+    if (!key) return 0;
+    const saved = read(key, []);
+    if (!Array.isArray(saved) || !saved.length) return 0;
+    saved.forEach(j => {
+      if (j && j.action) queue.push({ action: j.action, payload: j.payload, restored: true });
+    });
+    state.queued = queue.length;
+    pump();
+    return saved.length;
+  }
+
+  function clearOutbox() {
+    const key = outboxKey();
+    if (key) write(key, null);
+  }
 
   function enqueue(job) {           // { action, payload, done, fail, revive }
     // Stamped here, before the first attempt, so every retry of this job
@@ -151,6 +193,7 @@ const API = (function () {
     job.payload = stampWrite(job.action, job.payload);
     queue.push(job);
     state.queued = queue.length;
+    saveOutbox();
     pump();
   }
 
@@ -176,6 +219,7 @@ const API = (function () {
     // save would wedge every later write behind a Retry that cannot help.
     queue.shift();
     state.queued = queue.length;
+    saveOutbox();                 // it is on the server now; stop holding it
     busy = false;
     runCallback(job.done, res);
     if (queue.length) { pump(); } else { emit("saved", "Saved"); }
@@ -202,13 +246,11 @@ const API = (function () {
   }
   function onChange(fn) { listeners.push(fn); fn(state); }
 
-  // A queued write must not vanish with the tab without a word.
-  window.addEventListener("beforeunload", e => {
-    if (queue.length) { e.preventDefault(); e.returnValue = ""; }
-  });
+  // Nothing to warn about any more: whatever is still queued is on the device
+  // and goes out the next time this account is opened here.
 
   return {
-    call, enqueue, retry, onChange, state,
+    call, enqueue, retry, onChange, state, restoreOutbox,
     url,
     token, user, signup, login, resetPassword, signOut,
     pending: () => queue.length,
