@@ -2243,6 +2243,231 @@ function download(name, text, mime) {
 }
 
 /* ==========================================================================
+   PDF export
+
+   Everything the account owns, laid out as a document: each head starts a
+   page, its notes follow it, and its sub-heads are nested inside it with
+   their own notes, as deep as they go. The inbox comes last.
+
+   Dates are deliberately absent. This is a record of the work, not a log of
+   when it was typed — which is also why notes keep their written order
+   rather than being re-sorted by anything the reader cannot see.
+
+   There is no PDF library in here. The browser already carries a typesetter
+   and a PDF writer behind Ctrl+P; this builds the document it should print
+   and gets out of the way. What comes out has selectable text, real links
+   and copyable content — none of which survives drawing a PDF onto a canvas.
+   ========================================================================== */
+async function exportPdf() {
+  sync("saving", "Gathering everything");
+  let data;
+  try {
+    data = (await API.call("exportAll")).data;
+  } catch (e) {
+    sync("failed", e.message);
+    toast(e.message, "bad");
+    return;
+  }
+
+  // Images live in Drive and come back one at a time. Anything already looked
+  // at this session is in hand; the rest are fetched now, because a document
+  // that silently drops half its pictures is worse than one that takes longer.
+  const wanted = [];
+  (data.notes || []).forEach(n => imageIdsOf(n).forEach(id => {
+    if (!imageCache.has(id) && !wanted.includes(id)) wanted.push(id);
+  }));
+  for (let i = 0; i < wanted.length; i++) {
+    sync("saving", `Fetching image ${i + 1} of ${wanted.length}`);
+    try {
+      const res = await API.call("getImage", { image_id: wanted[i] });
+      imageCache.set(wanted[i], `data:${res.mime};base64,${res.data}`);
+    } catch (e) {
+      // Left out of the cache on purpose: the document says the image is
+      // missing, and the next export tries for it again.
+    }
+  }
+
+  const counts = buildPaper(data);
+  $("#paperSub").textContent =
+    `${counts.heads} head${counts.heads === 1 ? "" : "s"} · ` +
+    `${counts.notes} note${counts.notes === 1 ? "" : "s"}` +
+    (counts.images ? ` · ${counts.images} image${counts.images === 1 ? "" : "s"}` : "");
+
+  $("#paper").classList.remove("hide");
+  document.documentElement.classList.add("export-open");
+  const scroll = $(".paper-scroll");
+  if (scroll) scroll.scrollTop = 0;
+
+  // The browser names the saved file after the page, so the page is renamed
+  // for as long as the document is up.
+  paperTitleWas = document.title;
+  const who = (data.account && (data.account.name || data.account.username)) || "";
+  document.title = who ? `Work record — ${who}` : "Work record";
+
+  sync("saved", "Export ready");
+}
+
+let paperTitleWas = "";
+
+function closePaper() {
+  $("#paper").classList.add("hide");
+  document.documentElement.classList.remove("export-open");
+  $("#paperDoc").innerHTML = "";            // some of this is image data
+  if (paperTitleWas) { document.title = paperTitleWas; paperTitleWas = ""; }
+}
+
+/** Builds the document and returns what went into it. */
+function buildPaper(data) {
+  const heads = (data.heads || []).filter(h => h.head_id);
+  const notes = (data.notes || []).filter(n => n.note_id);
+
+  const kidsOf = groupBy(heads, h => h.parent_id || "");
+  const notesOf = groupBy(notes, n => n.head_id || "");
+  const noteById = new Map(notes.map(n => [n.note_id, n]));
+  const headById = new Map(heads.map(h => [h.head_id, h]));
+
+  // A head whose parent is missing or archived away still has to appear
+  // somewhere, so anything we never reach from the top is shown as top-level.
+  const seen = new Set();
+  const roots = (kidsOf.get("") || []).slice();
+  roots.forEach(function mark(h) {
+    if (seen.has(h.head_id)) return;
+    seen.add(h.head_id);
+    (kidsOf.get(h.head_id) || []).forEach(mark);
+  });
+  heads.forEach(h => { if (!seen.has(h.head_id)) roots.push(h); });
+
+  const who = (data.account && (data.account.name || data.account.username)) || "";
+  const inbox = notesOf.get("") || [];
+  let imageCount = 0;
+
+  const body = roots.map(h => headSection(h, 1)).join("") +
+    (inbox.length
+      ? `<section class="pg"><h1 class="h-title">Inbox</h1>
+         <p class="h-note">Notes that were never filed under a head.</p>
+         ${noteTree(inbox, "")}</section>`
+      : "");
+
+  $("#paperDoc").innerHTML = `
+    <header class="cover">
+      <div class="cover-mark">DOCUMENTRISM</div>
+      <h1 class="cover-title">Work record</h1>
+      ${who ? `<p class="cover-who">${esc(who)}</p>` : ""}
+      <p class="cover-count">${heads.length} head${heads.length === 1 ? "" : "s"} · ${notes.length} note${notes.length === 1 ? "" : "s"}</p>
+    </header>
+    ${roots.length > 1 ? `<nav class="toc">
+      <h2 class="toc-h">Contents</h2>
+      <ol>${roots.map(h => `<li>${esc(h.title)}${
+        h.client ? ` <span class="toc-c">${esc(h.client)}</span>` : ""}</li>`).join("")}</ol>
+    </nav>` : ""}
+    ${body || `<section class="pg"><p class="h-note">There is nothing in this account yet.</p></section>`}`;
+
+  return { heads: heads.length, notes: notes.length, images: imageCount };
+
+  /* ---- the pieces ---- */
+
+  function headSection(h, depth) {
+    const kids = kidsOf.get(h.head_id) || [];
+    const mine = notesOf.get(h.head_id) || [];
+    const tag = depth === 1 ? "h1" : depth === 2 ? "h2" : "h3";
+
+    return `<section class="${depth === 1 ? "pg" : "sub"}" ${depth > 1 ? `style="--d:${Math.min(depth - 1, 4)}"` : ""}>
+      <${tag} class="h-title">${esc(h.title)}${
+        h.archived === "Yes" ? ` <span class="flag">Archived</span>` : ""}${
+        h.needs_detail === "Yes" ? ` <span class="flag">Needs detail</span>` : ""}</${tag}>
+      ${metaLine([h.client, h.type, h.status])}
+      ${h.link ? linkLine(h.link) : ""}
+      ${prose(h.details)}
+      ${mine.length ? noteTree(mine, h.head_id) : `<p class="h-note">No notes under this head.</p>`}
+      ${kids.map(k => headSection(k, depth + 1)).join("")}
+    </section>`;
+  }
+
+  /** Notes, nested the way they were nested in the app. */
+  function noteTree(list, headId) {
+    const byParent = groupBy(list, n => {
+      const p = n.parent_note_id || "";
+      // A note whose parent sits in another head is drawn at this level.
+      return p && list.some(x => x.note_id === p) ? p : "";
+    });
+    return `<div class="notes">${branch("")}</div>`;
+
+    function branch(parent) {
+      return (byParent.get(parent) || []).map(n => `
+        <div class="note">
+          ${prose(n.text) || `<p class="n-text faint">(empty note)</p>`}
+          ${metaLine([n.type, n.needs_detail === "Yes" ? "Needs detail" : "",
+                      n.archived === "Yes" ? "Archived" : ""])}
+          ${n.link ? linkLine(n.link) : ""}
+          ${n.details ? `<div class="n-detail">${prose(n.details)}</div>` : ""}
+          ${shots(n)}
+          ${linkedTo(n)}
+          ${byParent.has(n.note_id) ? `<div class="kidnotes">${branch(n.note_id)}</div>` : ""}
+        </div>`).join("");
+    }
+  }
+
+  function shots(n) {
+    const ids = imageIdsOf(n);
+    if (!ids.length) return "";
+    return `<div class="shots">${ids.map(id => {
+      const url = imageCache.get(id);
+      if (!url) return `<div class="shot-gone">[image unavailable]</div>`;
+      imageCount++;
+      return `<figure class="shot"><img src="${url}" alt=""></figure>`;
+    }).join("")}</div>`;
+  }
+
+  /** What this note points at, named so the reader can find it. */
+  function linkedTo(n) {
+    const ids = String(n.links || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!ids.length) return "";
+    const named = ids.map(id => {
+      const t = noteById.get(id);
+      if (!t) return null;
+      const home = t.head_id ? headById.get(t.head_id) : null;
+      return `<li>${esc(excerpt(t.text, 90))}${
+        home ? ` <span class="in">in ${esc(home.title)}</span>`
+             : ` <span class="in">in the inbox</span>`}</li>`;
+    }).filter(Boolean);
+    if (!named.length) return "";
+    return `<div class="linked"><span class="lk">Linked to</span><ul>${named.join("")}</ul></div>`;
+  }
+}
+
+function metaLine(parts) {
+  const bits = parts.filter(Boolean).map(p => `<span>${esc(p)}</span>`);
+  return bits.length ? `<p class="meta">${bits.join('<i>·</i>')}</p>` : "";
+}
+
+function linkLine(href) {
+  return `<p class="link"><a href="${esc(href)}">${esc(href)}</a></p>`;
+}
+
+/** Text as paragraphs, with the line breaks the writer put in. */
+function prose(text) {
+  const s = String(text ?? "").trim();
+  if (!s) return "";
+  return s.split(/\n{2,}/).map(block =>
+    `<p class="n-text">${esc(block).replace(/\n/g, "<br>")}</p>`).join("");
+}
+
+function excerpt(text, max) {
+  const s = String(text ?? "").replace(/\s+/g, " ").trim();
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+function groupBy(list, keyOf) {
+  const m = new Map();
+  list.forEach(item => {
+    const k = keyOf(item);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(item);
+  });
+  return m;
+}
+
+/* ==========================================================================
    Console — terminal mode
    ========================================================================== */
 const CONSOLE_HELP = [
@@ -2257,6 +2482,7 @@ const CONSOLE_HELP = [
   "mode <name>        signal | terminal | paper",
   "theme <name>       dark | light",
   "export             download a backup",
+  "pdf                everything as a printable document",
   "whoami             who is signed in",
   "clear              clear this console",
   "help               this list",
@@ -2374,6 +2600,7 @@ async function runCommand(raw) {
     }
 
     case "export": exportAll(); cprint("building export…", "dim"); break;
+    case "pdf": exportPdf(); cprint("building the document…", "dim"); break;
     case "whoami": cprint(`${S.user.username}  (${S.user.name})`, ""); break;
     case "clear": $("#consoleOut").innerHTML = ""; break;
     case "exit": case "logout": signOut(); break;
@@ -2839,6 +3066,11 @@ function wire() {
 
   on($("#btnRefresh"), "click", () => reload({ loud: true }));
 
+  /* the export document */
+  on($("#btnPdf"), "click", exportPdf);
+  on($("#paperPrint"), "click", () => window.print());
+  on($("#paperClose"), "click", closePaper);
+
   /* sharing */
   on($("#shareOpen"), "click", () => {
     if (S.current) openShare("head", S.current.head.head_id, S.current.head.title);
@@ -2867,6 +3099,10 @@ function wire() {
     const mod = e.ctrlKey || e.metaKey;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
 
+    if (e.key === "Escape" && !$("#paper").classList.contains("hide")) {
+      closePaper();
+      return;
+    }
     if (e.key === "Escape" && $("#lightbox").classList.contains("on")) {
       $("#lightbox").classList.remove("on");
       return;

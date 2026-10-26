@@ -199,6 +199,7 @@
     <div class="rail-foot">
       <div class="row">
         <button class="btn sm" id="btnRefresh" title="Refresh">⟳<span> Refresh</span></button>
+        <button class="btn sm ghost" id="btnPdf" title="Export everything as a PDF">⇩<span> PDF</span></button>
       </div>
       <div class="row">
         <button class="btn sm ghost" id="btnSettings" title="Appearance (Ctrl ,)">◐<span> Appearance</span></button>
@@ -762,6 +763,23 @@
 <div class="lightbox" id="lightbox">
   <span class="close">✕</span>
   <img id="lightboxImg" alt="">
+</div>
+
+<!-- The export document. Built on demand, shown as a preview first, and the
+     only thing on the page that survives printing. -->
+<div class="paperwrap hide" id="paper">
+  <div class="paper-bar">
+    <div>
+      <div class="paper-title">Export preview</div>
+      <div class="paper-sub" id="paperSub">—</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn pri" id="paperPrint">Save as PDF</button>
+    <button class="btn ghost" id="paperClose">Close</button>
+  </div>
+  <div class="paper-scroll">
+    <article class="paper" id="paperDoc"></article>
+  </div>
 </div>
 
 <div class="toasts" id="toasts"></div>

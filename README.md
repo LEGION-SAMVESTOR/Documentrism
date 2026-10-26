@@ -455,9 +455,25 @@ there is no flash of the wrong skin on load.
 ### The console
 
 Terminal mode adds a real command line: `note`, `head`, `ls`, `open`, `inbox`,
-`file`, `status`, `detail`, `mode`, `theme`, `export`, `whoami`, `clear`,
-`help`, `exit`. `ls` numbers its output and `open 2` takes that number, so the
-two work together.
+`file`, `status`, `detail`, `mode`, `theme`, `export`, `pdf`, `whoami`,
+`clear`, `help`, `exit`. `ls` numbers its output and `open 2` takes that
+number, so the two work together.
+
+### The PDF export
+
+**PDF** in the sidebar lays the whole account out as a document — every head,
+its notes, its sub-heads nested inside it with their own notes, linked notes
+named so they can be found, images, and the inbox at the end. Dates are left
+out on purpose: it is a record of the work, not a log of when it was typed.
+
+It is shown as a preview first, then **Save as PDF** hands it to the browser's
+own print-to-PDF. There is no PDF library in the bundle. The browser already
+has a typesetter and a PDF writer; what comes out has selectable text and
+working links, which a canvas-drawn PDF would not.
+
+The document ignores the theme entirely — black on white, whatever the screen
+looks like. The print rules are scoped to the preview being open, so an
+ordinary Ctrl+P of the app still behaves the way it always did.
 
 ### Custom CSS
 
@@ -499,8 +515,10 @@ owner. Sharing work is what each person's **Export** is for.
 - No installable CLI. The console is in the browser.
 - Sharing is read-only and one way. There is no shared editing, and no
   notification when something is shared with you — it appears in the tab.
-- The Export button is gone at your request. The terminal `export` command
-  still works, and the sheet itself remains the real backup (File → Download).
+- The JSON/CSV Export button is gone at your request. The terminal `export`
+  command still works, and the sheet itself remains the real backup
+  (File → Download). The sidebar's **PDF** is a separate thing: a document to
+  read and send, not a backup to restore from.
 
 ---
 
